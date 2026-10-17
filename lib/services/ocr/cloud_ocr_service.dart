@@ -1,15 +1,15 @@
 import 'dart:io';
 
 import '../../models/ocr_result.dart';
+import 'field_parser.dart';
 import 'ocr_service.dart';
-import 'on_device_ocr_service.dart';
 
 /// Cloud OCR stub — no API keys. Returns a soft failure unless a demo sidecar
 /// is present. Wire a real provider only after user consent + your own backend.
 class CloudOcrService implements OcrService {
   @override
   Future<OcrResult> recognize(File imageFile) async {
-    await Future<void>.delayed(const Duration(milliseconds: 800));
+    await Future<void>.delayed(const Duration(milliseconds: 400));
 
     final sidecar = File('${imageFile.path}.cloud.txt');
     if (await sidecar.exists()) {

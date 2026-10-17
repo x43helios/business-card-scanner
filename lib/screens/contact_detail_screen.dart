@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../l10n/app_localizations.dart';
@@ -176,7 +177,7 @@ class _ContactDetailScreenState extends State<ContactDetailScreen> {
                 ),
                 subtitle: Text(
                   '${l10n.ocrSource}: ${card.ocrSource}\n'
-                  '${card.createdAt.toLocal()}',
+                  '${DateFormat.yMMMd().add_Hm().format(card.createdAt.toLocal())}',
                 ),
                 isThreeLine: true,
                 trailing: card.imagePath != null

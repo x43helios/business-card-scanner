@@ -48,14 +48,14 @@ class _ScanSourceScreenState extends State<ScanSourceScreen> {
     }
   }
 
-  /// Creates a tiny placeholder JPEG named demo so stub OCR can run on Linux.
+  /// Creates a tiny placeholder JPEG named demo so stub OCR can run without
+  /// Vision / ML Kit (Linux CI, emulators without models, etc.).
   Future<void> _runDemo() async {
     if (_busy) return;
     setState(() => _busy = true);
     try {
       final dir = await getTemporaryDirectory();
       final file = File(p.join(dir.path, 'demo_business_card.jpg'));
-      // Minimal valid 1x1 JPEG
       await file.writeAsBytes(const [
         0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00, 0x01,
         0x01, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0xFF, 0xDB, 0x00, 0x43,
@@ -101,38 +101,118 @@ class _ScanSourceScreenState extends State<ScanSourceScreen> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final scheme = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(title: Text(l10n.scan)),
-      body: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(l10n.demoHint, style: Theme.of(context).textTheme.bodyMedium),
-            const SizedBox(height: 24),
-            FilledButton.icon(
-              onPressed: _busy ? null : () => _pick(ImageSource.camera),
-              icon: const Icon(Icons.photo_camera_outlined),
-              label: Text(l10n.takePhoto),
+      body: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          Card(
+            elevation: 0,
+            color: scheme.primaryContainer.withValues(alpha: 0.45),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Icon(Icons.info_outline, color: scheme.onPrimaryContainer),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      l10n.demoHint,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: scheme.onPrimaryContainer,
+                          ),
+                    ),
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: 12),
-            OutlinedButton.icon(
-              onPressed: _busy ? null : () => _pick(ImageSource.gallery),
-              icon: const Icon(Icons.photo_library_outlined),
-              label: Text(l10n.pickGallery),
-            ),
-            const SizedBox(height: 24),
-            TextButton(
-              onPressed: _busy ? null : _runDemo,
-              child: Text(l10n.isZh ? '執行示範 OCR' : 'Run demo OCR'),
-            ),
-            if (_busy) ...[
-              const SizedBox(height: 24),
-              const Center(child: CircularProgressIndicator()),
-            ],
+          ),
+          const SizedBox(height: 20),
+          _SourceTile(
+            icon: Icons.photo_camera_outlined,
+            title: l10n.takePhoto,
+            subtitle: l10n.isZh ? '使用相機拍攝名片' : 'Capture with the camera',
+            filled: true,
+            onPressed: _busy ? null : () => _pick(ImageSource.camera),
+          ),
+          const SizedBox(height: 12),
+          _SourceTile(
+            icon: Icons.photo_library_outlined,
+            title: l10n.pickGallery,
+            subtitle: l10n.isZh ? '從相簿選取既有照片' : 'Pick an existing photo',
+            filled: false,
+            onPressed: _busy ? null : () => _pick(ImageSource.gallery),
+          ),
+          const SizedBox(height: 28),
+          OutlinedButton.icon(
+            onPressed: _busy ? null : _runDemo,
+            icon: const Icon(Icons.play_circle_outline),
+            label: Text(l10n.isZh ? '執行示範 OCR' : 'Run demo OCR'),
+          ),
+          if (_busy) ...[
+            const SizedBox(height: 28),
+            const Center(child: CircularProgressIndicator()),
           ],
-        ),
+        ],
       ),
+    );
+  }
+}
+
+class _SourceTile extends StatelessWidget {
+  const _SourceTile({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.filled,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final bool filled;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final child = Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+      child: Row(
+        children: [
+          Icon(icon, size: 28),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: Theme.of(context).textTheme.titleMedium),
+                Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
+              ],
+            ),
+          ),
+          const Icon(Icons.chevron_right),
+        ],
+      ),
+    );
+    if (filled) {
+      return FilledButton(
+        onPressed: onPressed,
+        style: FilledButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          alignment: Alignment.centerLeft,
+        ),
+        child: child,
+      );
+    }
+    return OutlinedButton(
+      onPressed: onPressed,
+      style: OutlinedButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        alignment: Alignment.centerLeft,
+      ),
+      child: child,
     );
   }
 }

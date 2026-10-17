@@ -50,6 +50,17 @@ class _ReviewFieldsScreenState extends State<ReviewFieldsScreen> {
     }
   }
 
+  String _ocrSourceDisplay(AppLocalizations l10n) {
+    switch (widget.ocrResult.engine) {
+      case OcrEngine.onDevice:
+        return l10n.isZh ? '本機 OCR (ML Kit)' : 'On-device OCR (ML Kit)';
+      case OcrEngine.cloud:
+        return l10n.isZh ? '雲端 OCR' : 'Cloud OCR';
+      case OcrEngine.stubDemo:
+        return l10n.isZh ? '示範 OCR' : 'Demo OCR';
+    }
+  }
+
   Future<void> _save() async {
     if (_saving) return;
     setState(() => _saving = true);
@@ -134,7 +145,7 @@ class _ReviewFieldsScreenState extends State<ReviewFieldsScreen> {
           ),
           const SizedBox(height: 8),
           Text(
-            '${l10n.ocrSource}: $_ocrSourceLabel'
+            '${l10n.ocrSource}: ${_ocrSourceDisplay(l10n)}'
             '${widget.ocrResult.errorMessage != null ? " — ${widget.ocrResult.errorMessage}" : ""}',
             style: Theme.of(context).textTheme.bodySmall,
           ),
@@ -142,6 +153,12 @@ class _ReviewFieldsScreenState extends State<ReviewFieldsScreen> {
           FieldEditor(
             fields: _fields,
             onChanged: (f) => setState(() => _fields = f),
+          ),
+          const SizedBox(height: 16),
+          FilledButton.icon(
+            onPressed: _saving ? null : _save,
+            icon: const Icon(Icons.save_outlined),
+            label: Text(l10n.save),
           ),
         ],
       ),

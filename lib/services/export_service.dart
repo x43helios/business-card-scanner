@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
@@ -14,9 +15,10 @@ enum ExportFormat { vcard, csv, pdf }
 class ExportService {
   Future<File> exportContacts(
     List<Contact> contacts,
-    ExportFormat format,
-  ) async {
-    final dir = await getTemporaryDirectory();
+    ExportFormat format, {
+    Directory? outputDir,
+  }) async {
+    final dir = outputDir ?? await getTemporaryDirectory();
     final stamp = DateTime.now().millisecondsSinceEpoch;
     switch (format) {
       case ExportFormat.vcard:
@@ -130,8 +132,35 @@ class ExportService {
     return buf.toString();
   }
 
+  Future<pw.Font?> _loadCjkFont() async {
+    try {
+      final data = await rootBundle.load('assets/fonts/NotoSansTC-Regular.ttf');
+      return pw.Font.ttf(data);
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<List<int>> _toPdf(List<Contact> contacts) async {
-    final doc = pw.Document();
+    final cjk = await _loadCjkFont();
+    final theme = cjk != null
+        ? pw.ThemeData.withFont(base: cjk, bold: cjk)
+        : null;
+
+    final doc = pw.Document(theme: theme);
+    final titleStyle = pw.TextStyle(
+      fontSize: 20,
+      fontWeight: pw.FontWeight.bold,
+      font: cjk,
+    );
+    final headingStyle = pw.TextStyle(
+      fontSize: 14,
+      fontWeight: pw.FontWeight.bold,
+      font: cjk,
+    );
+    final bodyStyle = pw.TextStyle(fontSize: 11, font: cjk);
+    final smallStyle = pw.TextStyle(fontSize: 10, font: cjk);
+
     doc.addPage(
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
@@ -139,13 +168,13 @@ class ExportService {
           pw.Header(
             level: 0,
             child: pw.Text(
-              'Business Card Scanner Export',
-              style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold),
+              'Business Card Scanner / 名片掃描',
+              style: titleStyle,
             ),
           ),
           pw.Text(
             'Exported: ${DateTime.now().toIso8601String()}',
-            style: const pw.TextStyle(fontSize: 10),
+            style: smallStyle,
           ),
           pw.SizedBox(height: 16),
           ...contacts.map((c) {
@@ -159,30 +188,26 @@ class ExportService {
               child: pw.Column(
                 crossAxisAlignment: pw.CrossAxisAlignment.start,
                 children: [
-                  pw.Text(
-                    c.displayName,
-                    style: pw.TextStyle(
-                      fontSize: 14,
-                      fontWeight: pw.FontWeight.bold,
-                    ),
-                  ),
-                  if (c.title != null) pw.Text(c.title!),
-                  if (c.companyName != null) pw.Text(c.companyName!),
-                  if (c.companyAddress != null) pw.Text(c.companyAddress!),
+                  pw.Text(c.displayName, style: headingStyle),
+                  if (c.title != null) pw.Text(c.title!, style: bodyStyle),
+                  if (c.companyName != null)
+                    pw.Text(c.companyName!, style: bodyStyle),
+                  if (c.companyAddress != null)
+                    pw.Text(c.companyAddress!, style: bodyStyle),
                   if (c.personalPhone != null)
-                    pw.Text('Mobile: ${c.personalPhone}'),
+                    pw.Text('Mobile: ${c.personalPhone}', style: bodyStyle),
                   if (c.companyPhone != null)
-                    pw.Text('Tel: ${c.companyPhone}'),
+                    pw.Text('Tel: ${c.companyPhone}', style: bodyStyle),
                   if (c.personalEmail != null)
-                    pw.Text('Email: ${c.personalEmail}'),
+                    pw.Text('Email: ${c.personalEmail}', style: bodyStyle),
                   if (c.companyEmail != null)
-                    pw.Text('Work Email: ${c.companyEmail}'),
-                  if (c.fax != null) pw.Text('Fax: ${c.fax}'),
+                    pw.Text('Work Email: ${c.companyEmail}', style: bodyStyle),
+                  if (c.fax != null) pw.Text('Fax: ${c.fax}', style: bodyStyle),
                   if (c.companyWebsite != null)
-                    pw.Text('Web: ${c.companyWebsite}'),
+                    pw.Text('Web: ${c.companyWebsite}', style: bodyStyle),
                   if (c.tags.isNotEmpty)
-                    pw.Text('Tags: ${c.tags.join(', ')}'),
-                  pw.Text('Cards: ${c.cards.length}'),
+                    pw.Text('Tags: ${c.tags.join(', ')}', style: bodyStyle),
+                  pw.Text('Cards: ${c.cards.length}', style: bodyStyle),
                 ],
               ),
             );
