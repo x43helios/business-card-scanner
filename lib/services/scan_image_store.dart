@@ -16,7 +16,7 @@ class ScanImageStore {
 
   static const _minBytes = 32;
   static const _maxBytes = 40 * 1024 * 1024; // 40 MB safety cap
-  static const _maxEdge = 1600;
+  static const _maxEdge = 2000;
   static const _downscaleOverBytes = 1 * 1024 * 1024; // 1 MB
 
   /// Returns a stable absolute path under the app documents directory.

@@ -14,10 +14,14 @@ export 'field_parser.dart';
 /// On-device OCR with graceful fallback chain:
 /// 1. Sibling `.txt` sidecar (tests / custom parse)
 /// 2. Filename containing `demo` / `sample` → built-in sample card
-/// 3. Google ML Kit Text Recognition (Android / iOS) — Latin, optional Chinese
+/// 3. Google ML Kit Text Recognition (Android / iOS) — Latin always,
+///    Chinese when [kEnableMlKitChinese] (default on); results merged
 /// 4. Failure → [OcrCoordinator] may prompt for cloud consent
 ///
 /// iOS Apple Vision is not wired on this Linux build host (no Mac/Xcode).
+///
+/// Demo path uses only the built-in 陳大文 sample — never fixture images
+/// such as gloryin_cathy_cheung (filename has neither demo nor sample).
 class OnDeviceOcrService implements OcrService {
   @override
   Future<OcrResult> recognize(File imageFile) async {
@@ -131,7 +135,7 @@ class OnDeviceOcrService implements OcrService {
         return null;
       }
 
-      // Latin first — Chinese script pack has JNI-crashed some devices.
+      // Latin always; Chinese when enabled (soft-fail → Latin-only).
       await CrashLog.log('ML Kit: latin processImage');
       final latin = await _runScriptSafe(input, TextRecognitionScript.latin);
 
@@ -140,13 +144,12 @@ class OnDeviceOcrService implements OcrService {
         await CrashLog.log('ML Kit: chinese processImage');
         chinese = await _runScriptSafe(input, TextRecognitionScript.chinese);
       } else {
-        await CrashLog.log('ML Kit: chinese skipped (ENABLE_ML_KIT_CHINESE=false)');
+        await CrashLog.log(
+          'ML Kit: chinese skipped (ENABLE_ML_KIT_CHINESE=false)',
+        );
       }
 
-      var text = chinese.trim().length >= latin.trim().length ? chinese : latin;
-      if (text.trim().isEmpty) {
-        text = latin.trim().isNotEmpty ? latin : chinese;
-      }
+      final text = _mergeScriptTexts(latin, chinese);
       if (text.trim().isEmpty) return null;
 
       final fields = FieldParser.parse(text);
@@ -163,6 +166,78 @@ class OnDeviceOcrService implements OcrService {
       await CrashLog.log('ML Kit OCR unavailable/failed', e, st);
       return null;
     }
+  }
+
+  /// Merge Latin + Chinese ML Kit outputs for bilingual HK cards.
+  ///
+  /// Strategy: keep unique lines from both. Prefer CJK-heavy lines from the
+  /// Chinese script result; prefer lines with email/URL/phone from whichever
+  /// has them. If one side is empty, use the other. Soft-fail never throws.
+  static String _mergeScriptTexts(String latin, String chinese) {
+    final l = latin.trim();
+    final c = chinese.trim();
+    if (l.isEmpty) return c;
+    if (c.isEmpty) return l;
+    if (l == c) return l;
+
+    final contactRe = RegExp(
+      r'[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}|'
+      r'(?:https?:\/\/)?(?:www\.)?[A-Z0-9.-]+\.[A-Z]{2,}|'
+      r'(?:\+?\d[\d\s\-()]{7,}\d)|(?:\b[2-9]\d{3}[\s\-]?\d{4}\b)|'
+      r'whats?app|email|e-mail|mobile|tel|fax|電話|手機|電郵',
+      caseSensitive: false,
+    );
+    final cjkRe = RegExp(r'[\u4e00-\u9fff]');
+
+    List<String> splitLines(String t) => t
+        .split(RegExp(r'[\r\n]+'))
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .toList();
+
+    final latinLines = splitLines(l);
+    final chineseLines = splitLines(c);
+
+    // Score how many CJK chars a line has.
+    int cjkCount(String s) => cjkRe.allMatches(s).length;
+
+    final merged = <String>[];
+    final seenNorm = <String>{};
+
+    String norm(String s) =>
+        s.toLowerCase().replaceAll(RegExp(r'\s+'), ' ').trim();
+
+    void addLine(String line) {
+      final n = norm(line);
+      if (n.isEmpty || seenNorm.contains(n)) return;
+      seenNorm.add(n);
+      merged.add(line);
+    }
+
+    // Walk Chinese lines first for CJK-heavy content.
+    for (final line in chineseLines) {
+      if (cjkCount(line) > 0 || contactRe.hasMatch(line)) {
+        addLine(line);
+      }
+    }
+    // Latin lines: contact-rich or unique Latin-only content.
+    for (final line in latinLines) {
+      if (contactRe.hasMatch(line) || cjkCount(line) == 0) {
+        addLine(line);
+      } else if (!seenNorm.contains(norm(line))) {
+        // CJK line only in Latin — keep if Chinese missed it.
+        addLine(line);
+      }
+    }
+    // Any Chinese lines not yet added (pure Latin from Chinese script).
+    for (final line in chineseLines) {
+      addLine(line);
+    }
+
+    if (merged.isEmpty) {
+      return c.length >= l.length ? c : l;
+    }
+    return merged.join('\n');
   }
 
   Future<String> _runScriptSafe(

@@ -1,7 +1,7 @@
 name: business_card_scanner
 description: Business Card Scanner / 名片掃描 — local-first OCR MVP for iOS & Android.
 publish_to: 'none'
-version: 1.0.2+3
+version: 1.0.3+4
 
 environment:
   sdk: ^3.9.0
