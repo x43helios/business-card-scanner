@@ -16,13 +16,17 @@ www.helios.example
 ''';
     final f = FieldParser.parse(raw);
     expect(f.name, contains('陳'));
+    expect(f.chineseName, contains('陳'));
     expect(f.title, contains('產品'));
+    expect(f.titleChinese, contains('產品'));
     expect(f.companyName, contains('Helios'));
+    expect(f.companyNameEnglish, contains('Helios'));
     expect(f.personalEmail, 'david.chan@helios.example');
     expect(f.personalPhone, isNotNull);
     expect(f.companyPhone, isNotNull);
     expect(f.fax, isNotNull);
     expect(f.companyWebsite, contains('helios'));
+    expect(f.companyAddressChinese, isNotNull);
   });
 
   test('FieldParser handles English-only card', () {
@@ -37,6 +41,7 @@ https://www.acme.example
 ''';
     final f = FieldParser.parse(raw);
     expect(f.name, 'Jane Smith');
+    expect(f.englishName, 'Jane Smith');
     expect(f.personalEmail, 'jane@acme.example');
     expect(f.companyWebsite, contains('acme.example'));
     expect(f.isEmpty, isFalse);
@@ -47,10 +52,8 @@ https://www.acme.example
     expect(f.isEmpty, isTrue);
   });
 
-  /// Gold OCR raw text simulating successful ML Kit output for the Glory-In
-  /// clinic card (test/fixtures/gloryin_cathy_cheung.jpg). This string is the
-  /// unit-test fixture — the JPG is for future on-device tests only and must
-  /// never be wired into demo/sample OCR (filename has neither keyword).
+  /// Gold OCR raw text for Glory-In clinic card (test fixture JPG only —
+  /// never wired into demo/sample OCR).
   test('FieldParser extracts Glory-In HK bilingual clinic card (gold text)', () {
     const raw = '''
 港恩中醫診所
@@ -66,27 +69,25 @@ www.chinesedoctor.com.hk
 www.gloryin.com
 ''';
     final f = FieldParser.parse(raw);
-    expect(
-      f.name != null &&
-          (f.name!.contains('張敏芝') || f.name!.contains('Cathy')),
-      isTrue,
-      reason: 'name should contain 張敏芝 and/or Cathy, got: ${f.name}',
-    );
-    expect(f.companyName, contains('港恩'));
-    expect(f.companyName!.toUpperCase(), contains('GLORY'));
-    expect(
-      f.companyName,
-      '港恩中醫診所 / GLORY-IN CHINESE MEDICAL CLINIC',
-    );
+    expect(f.chineseName, '張敏芝');
+    expect(f.englishName, 'Cathy Cheung');
+    expect(f.name, '張敏芝 / Cathy Cheung');
+    expect(f.companyNameChinese, '港恩中醫診所');
+    expect(f.companyNameEnglish, 'GLORY-IN CHINESE MEDICAL CLINIC');
+    expect(f.companyName, '港恩中醫診所 / GLORY-IN CHINESE MEDICAL CLINIC');
+    expect(f.whatsapp, contains('5996'));
     expect(f.personalPhone, contains('5996'));
     expect(f.personalEmail, contains('cathymanchi@gloryin.com'));
     expect(f.companyWebsite, contains('gloryin.com'));
     expect(f.companyWebsite!.toLowerCase(), isNot(contains('chinesedoctor')));
-    expect(f.title, isNotNull);
+    expect(f.qualifications, isNotNull);
     expect(
-      f.title!.contains('註冊中醫師') || f.title!.contains('R.C.M.P'),
+      f.qualifications!.contains('註冊中醫師') ||
+          f.qualifications!.contains('R.C.M.P'),
       isTrue,
-      reason: 'title should include professional line, got: ${f.title}',
+      reason: 'qualifications got: ${f.qualifications}',
     );
+    expect(f.education, isNotNull);
+    expect(f.education, contains('大學'));
   });
 }

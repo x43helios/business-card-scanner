@@ -2,11 +2,9 @@ import '../../models/business_card_fields.dart';
 
 /// Shared regex / heuristic field extractor used by OCR engines.
 ///
-/// Tuned for Hong Kong bilingual (繁/簡 + English) cards:
-/// - WhatsApp / 手機 labels → personalPhone
-/// - HK 8-digit mobiles with spaces (e.g. `5996 1224`)
-/// - Company keywords (診所 / Clinic / Ltd / Centre …)
-/// - Name & company: bilingual scheme `中文 / English` when both present.
+/// Tuned for Hong Kong bilingual (繁/簡 + English) cards. Fills expanded
+/// fields (chineseName, whatsapp, qualifications, education, …) while
+/// legacy getters on [BusinessCardFields] remain coherent.
 class FieldParser {
   static final _emailRe = RegExp(
     r'[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}',
@@ -16,16 +14,35 @@ class FieldParser {
     r'(?:https?:\/\/)?(?:www\.)?[A-Z0-9.-]+\.[A-Z]{2,}(?:\/\S*)?',
     caseSensitive: false,
   );
-  /// International (+852 …) or HK local 8-digit with optional space/hyphen.
   static final _phoneRe = RegExp(
     r'(?:\+?\d[\d\s\-()]{7,}\d)|(?:\b[2-9]\d{3}[\s\-]?\d{4}\b)',
   );
+  static final _whatsappLabel = RegExp(
+    r'(whats?app|\bwa\b)',
+    caseSensitive: false,
+  );
   static final _mobileLabel = RegExp(
-    r'(mobile|手機|手提|cell|whats?app|\bwa\b|m[:：])',
+    r'(mobile|手機|手提|cell|m[:：])',
+    caseSensitive: false,
+  );
+  static final _wechatLabel = RegExp(
+    r'(wechat|微信|weixin)',
+    caseSensitive: false,
+  );
+  static final _lineLabel = RegExp(
+    r'(^|\s)(line|line\s*id)[:：\s]',
     caseSensitive: false,
   );
   static final _telLabel = RegExp(
     r'(tel|電話|office|公司電話|t[:：])',
+    caseSensitive: false,
+  );
+  static final _directLabel = RegExp(
+    r'(direct|直線|直撥)',
+    caseSensitive: false,
+  );
+  static final _extLabel = RegExp(
+    r'(ext\.?|extension|分機)',
     caseSensitive: false,
   );
   static final _faxLabel = RegExp(
@@ -36,13 +53,27 @@ class FieldParser {
     r'(email|e-mail|電郵|郵件)',
     caseSensitive: false,
   );
+  static final _deptLabel = RegExp(
+    r'(department|dept\.?|部門|組)',
+    caseSensitive: false,
+  );
+  static final _linkedinRe = RegExp(
+    r'(?:https?:\/\/)?(?:www\.)?linkedin\.com\/\S+',
+    caseSensitive: false,
+  );
   static final _companyKw = RegExp(
     r'(診所|中心|醫院|有限公司|公司|Ltd\.?|Limited|Clinic|Company|Medical|Corporation|Inc\.?|Centre|Center)',
     caseSensitive: false,
   );
-  static final _titleKw = RegExp(
-    r'(註冊|醫師|醫生|經理|總監|主任|工程師|顧問|Director|Manager|Officer|Engineer|'
-    r'R\.?\s*C\.?\s*M\.?\s*P\.?|Ph\.?\s*D\.?|MBA|CEO|CTO|CFO|MD)',
+  static final _jobTitleKw = RegExp(
+    r'(經理|總監|主任|工程師|顧問|助理|專員|代表|秘書|'
+    r'Director|Manager|Officer|Engineer|Consultant|Assistant|Specialist|'
+    r'CEO|CTO|CFO|COO|VP|President|Partner)',
+    caseSensitive: false,
+  );
+  static final _qualKw = RegExp(
+    r'(註冊|醫師|醫生|律師|會計師|測量師|R\.?\s*C\.?\s*M\.?\s*P\.?|'
+    r'Ph\.?\s*D\.?|MBA|CPA|CFA|MRCP|FRCS|註冊編號)',
     caseSensitive: false,
   );
   static final _addressKw = RegExp(
@@ -51,16 +82,33 @@ class FieldParser {
     caseSensitive: false,
   );
   static final _degreeKw = RegExp(
-    r'(大學|學士|碩士|博士|Bachelor|Master|University|Degree|學院)',
+    r'(大學|學士|碩士|博士|Bachelor|Master|University|Degree|學院|Diploma)',
     caseSensitive: false,
   );
-  /// 2–4 CJK chars typical of a Chinese personal name (not company).
+  static final _roomFloorRe = RegExp(
+    r'(Room|Flat|Floor|室|樓|座)\s*[A-Z0-9\-]+',
+    caseSensitive: false,
+  );
+  static final _districtKw = RegExp(
+    r'(中環|灣仔|銅鑼灣|尖沙咀|旺角|觀塘|沙田|荃灣|屯門|元朗|'
+    r'Central|Wanchai|Wan Chai|Tsim Sha Tsui|Mong Kok|Kwun Tong|'
+    r'Sha Tin|Tsuen Wan|Hong Kong|九龍|新界|Kowloon)',
+    caseSensitive: false,
+  );
+  static final _postalRe = RegExp(r'\b\d{5}(?:-\d{4})?\b');
+  static final _hoursLabel = RegExp(
+    r'(hours|營業時間|辦公時間|opening)',
+    caseSensitive: false,
+  );
+  static final _servicesLabel = RegExp(
+    r'(services|服務|專科|範圍)',
+    caseSensitive: false,
+  );
   static final _cjkPersonName = RegExp(r'^[\u4e00-\u9fff]{2,4}$');
-  /// English personal name: 2–4 capitalized words, no company keywords.
   static final _enPersonName = RegExp(
     r"^[A-Z][a-z]+(?:\s+[A-Z][a-z.'\-]+){0,3}$",
   );
-  /// Domains often appearing as watermark / directory noise on HK cards.
+  static final _cjkRe = RegExp(r'[\u4e00-\u9fff]');
   static const _watermarkDomains = {
     'chinesedoctor.com.hk',
     'chinesedoctor.com',
@@ -75,21 +123,42 @@ class FieldParser {
         .where((l) => l.isNotEmpty)
         .toList();
 
-    String? name;
-    String? title;
-    String? companyName;
-    String? companyAddress;
+    String? chineseName;
+    String? englishName;
+    String? titleChinese;
+    String? titleEnglish;
+    String? qualifications;
+    String? education;
+    String? companyNameChinese;
+    String? companyNameEnglish;
+    String? department;
     String? personalPhone;
-    String? personalEmail;
+    String? whatsapp;
+    String? wechat;
+    String? lineId;
     String? companyPhone;
-    String? companyEmail;
+    String? directLine;
+    String? extension;
     String? fax;
+    String? personalEmail;
+    String? companyEmail;
     String? companyWebsite;
+    String? linkedIn;
+    String? socialMedia;
+    String? companyAddressChinese;
+    String? companyAddressEnglish;
+    String? roomFloor;
+    String? district;
+    String? postalCode;
+    String? slogan;
+    String? services;
+    String? businessHours;
+    String? qrInfo;
+    String? notes;
 
     final emails = _emailRe.allMatches(raw).map((m) => m.group(0)!).toList();
     final phones =
         _phoneRe.allMatches(raw).map((m) => m.group(0)!.trim()).toList();
-    // Mask emails so URL regex does not pick "name.tld" from local-parts.
     var masked = raw;
     for (final e in emails) {
       masked = masked.replaceAll(e, ' ' * e.length);
@@ -104,10 +173,40 @@ class FieldParser {
                 u.split('.').last.length >= 2))
         .toList();
 
+    linkedIn = _linkedinRe.firstMatch(raw)?.group(0);
+
     for (final line in lines) {
+      if (_whatsappLabel.hasMatch(line)) {
+        final m = _phoneRe.firstMatch(line);
+        if (m != null) {
+          whatsapp ??= m.group(0)!.trim();
+          personalPhone ??= whatsapp;
+        }
+        continue;
+      }
+      if (_wechatLabel.hasMatch(line)) {
+        wechat ??= _extractAfterLabel(line, _wechatLabel);
+        continue;
+      }
+      if (_lineLabel.hasMatch(line)) {
+        lineId ??= _extractAfterLabel(line, _lineLabel);
+        continue;
+      }
       if (_faxLabel.hasMatch(line)) {
         final m = _phoneRe.firstMatch(line);
         if (m != null) fax ??= m.group(0)!.trim();
+        continue;
+      }
+      if (_extLabel.hasMatch(line)) {
+        final m = RegExp(r'[\d\-]+').firstMatch(
+          line.replaceFirst(_extLabel, ''),
+        );
+        if (m != null) extension ??= m.group(0);
+        continue;
+      }
+      if (_directLabel.hasMatch(line)) {
+        final m = _phoneRe.firstMatch(line);
+        if (m != null) directLine ??= m.group(0)!.trim();
         continue;
       }
       if (_mobileLabel.hasMatch(line)) {
@@ -132,6 +231,18 @@ class FieldParser {
         }
         continue;
       }
+      if (_deptLabel.hasMatch(line)) {
+        department ??= _extractAfterLabel(line, _deptLabel);
+        continue;
+      }
+      if (_hoursLabel.hasMatch(line)) {
+        businessHours ??= line;
+        continue;
+      }
+      if (_servicesLabel.hasMatch(line) && line.length < 80) {
+        services ??= _extractAfterLabel(line, _servicesLabel) ?? line;
+        continue;
+      }
     }
 
     if (personalEmail == null && emails.isNotEmpty) {
@@ -151,11 +262,23 @@ class FieldParser {
     }
     companyWebsite = _pickWebsite(urls);
 
-    // Contact / noise lines to skip when classifying name/title/company.
-    // Do NOT skip merely because a line contains digits (註冊編號, room no.).
+    // QR-ish: leftover URL that isn't the main website / LinkedIn
+    for (final u in urls) {
+      final low = u.toLowerCase();
+      if (companyWebsite != null &&
+          low.contains(companyWebsite.toLowerCase().replaceFirst('www.', ''))) {
+        continue;
+      }
+      if (linkedIn != null && low.contains('linkedin')) continue;
+      if (low.contains('qr') || low.contains('linktr') || low.contains('bit.ly')) {
+        qrInfo ??= u;
+      }
+    }
+
     final skip = RegExp(
       r'(mobile|tel|fax|email|e-mail|whats?app|\bwa\b|www\.|https?://|'
-      r'電話|手機|手提|傳真|電郵|郵件)',
+      r'電話|手機|手提|傳真|電郵|郵件|wechat|微信|linkedin|department|dept|部門|'
+      r'direct|直線|ext\.?|分機)',
       caseSensitive: false,
     );
     bool looksLikePhoneOnly(String l) {
@@ -163,6 +286,7 @@ class FieldParser {
       final letters = RegExp(r'[A-Za-z\u4e00-\u9fff]').allMatches(l).length;
       return _phoneRe.hasMatch(l) && digits >= 7 && letters <= 3;
     }
+
     final contentLines = lines
         .where((l) =>
             !skip.hasMatch(l) &&
@@ -171,14 +295,9 @@ class FieldParser {
             !looksLikePhoneOnly(l))
         .toList();
 
-    // --- Company (CJK + English; same bilingual scheme as name) ---
-    // Scheme: `港恩中醫診所` alone, or
-    // `港恩中醫診所 / GLORY-IN CHINESE MEDICAL CLINIC` when both present.
-    final cjkRe = RegExp(r'[\u4e00-\u9fff]');
     bool isEnglishCompanyLine(String l) {
-      if (cjkRe.hasMatch(l)) return false;
+      if (_cjkRe.hasMatch(l)) return false;
       if (!_companyKw.hasMatch(l)) return false;
-      // ALL-CAPS (allow hyphens/spaces/punct) or Title-ish with company kw.
       final letters = RegExp(r'[A-Za-z]').allMatches(l).length;
       if (letters < 4) return false;
       final upper = RegExp(r'[A-Z]').allMatches(l).length;
@@ -189,144 +308,205 @@ class FieldParser {
       return isMostlyUpper || isTitleish;
     }
 
-    String? cjkCompany;
-    String? enCompany;
     for (var i = 0; i < contentLines.length; i++) {
       final l = contentLines[i];
-      if (!_companyKw.hasMatch(l) && cjkCompany == null) continue;
-      if (cjkRe.hasMatch(l) && _companyKw.hasMatch(l)) {
-        cjkCompany ??= l;
-        // Immediate next line often English counterpart on HK cards.
+      if (!_companyKw.hasMatch(l) && companyNameChinese == null) continue;
+      if (_cjkRe.hasMatch(l) && _companyKw.hasMatch(l)) {
+        companyNameChinese ??= l;
         if (i + 1 < contentLines.length) {
           final next = contentLines[i + 1];
           if (isEnglishCompanyLine(next) ||
-              (!cjkRe.hasMatch(next) &&
+              (!_cjkRe.hasMatch(next) &&
                   _companyKw.hasMatch(next) &&
                   RegExp(r'[A-Za-z]').hasMatch(next))) {
-            enCompany ??= next;
+            companyNameEnglish ??= next;
           }
         }
       } else if (isEnglishCompanyLine(l) ||
-          (!cjkRe.hasMatch(l) && _companyKw.hasMatch(l))) {
-        enCompany ??= l;
+          (!_cjkRe.hasMatch(l) && _companyKw.hasMatch(l))) {
+        companyNameEnglish ??= l;
       }
-    }
-    if (cjkCompany != null && enCompany != null) {
-      companyName = '$cjkCompany / $enCompany';
-    } else {
-      companyName = cjkCompany ?? enCompany;
     }
 
     bool isCompanyLine(String l) =>
-        l == companyName || l == cjkCompany || l == enCompany;
+        l == companyNameChinese || l == companyNameEnglish;
 
-    // --- Name (CJK preferred; bilingual combine when both present) ---
-    // Scheme: `張敏芝` alone, or `張敏芝 / Cathy Cheung` when English personal
-    // name is also on the card. Never use company/title lines as name.
-    String? cjkName;
-    String? enName;
     for (final l in contentLines) {
       if (isCompanyLine(l)) continue;
       if (_companyKw.hasMatch(l)) continue;
-      if (_titleKw.hasMatch(l) && !_cjkPersonName.hasMatch(l)) continue;
+      if (_qualKw.hasMatch(l) && !_cjkPersonName.hasMatch(l)) continue;
+      if (_jobTitleKw.hasMatch(l) && !_cjkPersonName.hasMatch(l)) continue;
       if (_degreeKw.hasMatch(l)) continue;
       if (_addressKw.hasMatch(l) && l.length > 8) continue;
       if (_cjkPersonName.hasMatch(l)) {
-        cjkName ??= l;
+        chineseName ??= l;
       } else if (_enPersonName.hasMatch(l) && !_companyKw.hasMatch(l)) {
-        // Avoid short titles mistaken as names (CTO, CEO already fail regex).
-        enName ??= l;
+        englishName ??= l;
       }
     }
-    if (cjkName != null && enName != null) {
-      name = '$cjkName / $enName';
-    } else {
-      name = cjkName ?? enName;
-    }
 
-    // Fallback: first content line that is not company/title/degree/address.
-    if (name == null && contentLines.isNotEmpty) {
+    if (chineseName == null && englishName == null && contentLines.isNotEmpty) {
       for (final l in contentLines) {
         if (isCompanyLine(l)) continue;
         if (_companyKw.hasMatch(l)) continue;
         if (_degreeKw.hasMatch(l)) continue;
-        if (_titleKw.hasMatch(l)) continue;
-        name = l;
+        if (_qualKw.hasMatch(l) || _jobTitleKw.hasMatch(l)) continue;
+        if (_cjkRe.hasMatch(l)) {
+          chineseName = l;
+        } else {
+          englishName = l;
+        }
         break;
       }
-      name ??= contentLines.first;
     }
 
-    // --- Title (professional lines; degrees may append) ---
-    final titleParts = <String>[];
+    final qualParts = <String>[];
+    final eduParts = <String>[];
+    final jobZh = <String>[];
+    final jobEn = <String>[];
+
     for (final l in contentLines) {
-      if (name != null && (l == cjkName || l == enName || l == name)) continue;
+      if (l == chineseName || l == englishName) continue;
       if (isCompanyLine(l)) continue;
-      if (_companyKw.hasMatch(l) && !_titleKw.hasMatch(l)) continue;
-      if (_titleKw.hasMatch(l) ||
-          (_degreeKw.hasMatch(l) && titleParts.isNotEmpty)) {
-        titleParts.add(l);
-        if (titleParts.length >= 3) break;
+      if (_companyKw.hasMatch(l) && !_qualKw.hasMatch(l)) continue;
+
+      final isDegree = _degreeKw.hasMatch(l);
+      final isQual = _qualKw.hasMatch(l);
+      final isJob = _jobTitleKw.hasMatch(l);
+
+      if (isDegree) {
+        eduParts.add(l);
+        continue;
+      }
+      if (isQual) {
+        qualParts.add(l);
+        continue;
+      }
+      if (isJob) {
+        if (_cjkRe.hasMatch(l)) {
+          jobZh.add(l);
+        } else {
+          jobEn.add(l);
+        }
+        continue;
       }
     }
-    if (titleParts.isEmpty) {
-      // Legacy: second content line after name if it looks like a short title.
+
+    // Legacy short title fallback (e.g. 產品經理, CTO) when no job kw matched
+    // but a short non-company line sits after the name.
+    if (jobZh.isEmpty && jobEn.isEmpty && qualParts.isEmpty) {
       for (final l in contentLines) {
-        if (name != null && (l == cjkName || l == enName || l == name)) continue;
+        if (l == chineseName || l == englishName) continue;
         if (isCompanyLine(l)) continue;
         if (_companyKw.hasMatch(l) || _degreeKw.hasMatch(l)) continue;
         if (_addressKw.hasMatch(l) && l.length > 10) continue;
-        titleParts.add(l);
+        if (_cjkRe.hasMatch(l)) {
+          jobZh.add(l);
+        } else {
+          jobEn.add(l);
+        }
         break;
       }
     }
-    if (titleParts.isNotEmpty) {
-      title = titleParts.join(' · ');
-    }
 
-    // Company fallback if keyword miss: third-ish content line (legacy).
-    if (companyName == null) {
+    if (qualParts.isNotEmpty) qualifications = qualParts.join(' · ');
+    if (eduParts.isNotEmpty) education = eduParts.join(' · ');
+    if (jobZh.isNotEmpty) titleChinese = jobZh.first;
+    if (jobEn.isNotEmpty) titleEnglish = jobEn.first;
+
+    // Company fallback
+    if (companyNameChinese == null && companyNameEnglish == null) {
       for (final l in contentLines) {
-        if (name != null && (l == cjkName || l == enName || l == name)) continue;
-        if (titleParts.contains(l)) continue;
+        if (l == chineseName || l == englishName) continue;
+        if (qualParts.contains(l) || eduParts.contains(l)) continue;
+        if (l == titleChinese || l == titleEnglish) continue;
         if (_degreeKw.hasMatch(l)) continue;
         if (_addressKw.hasMatch(l) && !_companyKw.hasMatch(l)) continue;
-        companyName = l;
+        if (_cjkRe.hasMatch(l)) {
+          companyNameChinese = l;
+        } else {
+          companyNameEnglish = l;
+        }
         break;
       }
     }
 
-    // --- Address (only address-like lines; skip degrees) ---
-    final addressParts = <String>[];
+    // Address
+    final addrZh = <String>[];
+    final addrEn = <String>[];
     for (final l in contentLines) {
-      if (name != null && (l == cjkName || l == enName || l == name)) continue;
+      if (l == chineseName || l == englishName) continue;
       if (isCompanyLine(l)) continue;
-      if (titleParts.contains(l)) continue;
+      if (qualParts.contains(l) || eduParts.contains(l)) continue;
+      if (l == titleChinese || l == titleEnglish) continue;
       if (_degreeKw.hasMatch(l)) continue;
       if (_companyKw.hasMatch(l) && !_addressKw.hasMatch(l)) continue;
       if (_addressKw.hasMatch(l)) {
-        addressParts.add(l);
+        if (_cjkRe.hasMatch(l)) {
+          addrZh.add(l);
+        } else {
+          addrEn.add(l);
+        }
+        final rf = _roomFloorRe.firstMatch(l);
+        if (rf != null) roomFloor ??= rf.group(0);
+        if (_districtKw.hasMatch(l)) {
+          district ??= _districtKw.firstMatch(l)?.group(0);
+        }
+        final pc = _postalRe.firstMatch(l);
+        if (pc != null) postalCode ??= pc.group(0);
       }
     }
-    if (addressParts.isNotEmpty) {
-      companyAddress = addressParts.join(', ');
+    if (addrZh.isNotEmpty) companyAddressChinese = addrZh.join(', ');
+    if (addrEn.isNotEmpty) companyAddressEnglish = addrEn.join(', ');
+
+    // Light slogan: short quoted or trailing tagline not otherwise classified
+    for (final l in lines) {
+      if (l.startsWith('"') || l.startsWith('「') || l.startsWith('『')) {
+        slogan ??= l.replaceAll(RegExp(r'^["「『]|["」』]$'), '');
+      }
     }
 
     return BusinessCardFields(
-      name: name,
-      title: title,
-      companyName: companyName,
-      companyAddress: companyAddress,
+      chineseName: chineseName,
+      englishName: englishName,
+      titleChinese: titleChinese,
+      titleEnglish: titleEnglish,
+      qualifications: qualifications,
+      education: education,
+      companyNameChinese: companyNameChinese,
+      companyNameEnglish: companyNameEnglish,
+      department: department,
       personalPhone: personalPhone,
-      personalEmail: personalEmail,
+      whatsapp: whatsapp,
+      wechat: wechat,
+      lineId: lineId,
       companyPhone: companyPhone,
-      companyEmail: companyEmail,
+      directLine: directLine,
+      extension: extension,
       fax: fax,
+      personalEmail: personalEmail,
+      companyEmail: companyEmail,
       companyWebsite: companyWebsite,
+      linkedIn: linkedIn,
+      socialMedia: socialMedia,
+      companyAddressChinese: companyAddressChinese,
+      companyAddressEnglish: companyAddressEnglish,
+      roomFloor: roomFloor,
+      district: district,
+      postalCode: postalCode,
+      slogan: slogan,
+      services: services,
+      businessHours: businessHours,
+      qrInfo: qrInfo,
+      notes: notes,
     );
   }
 
-  /// Prefer non-watermark domains (e.g. gloryin.com over chinesedoctor.com.hk).
+  static String? _extractAfterLabel(String line, RegExp label) {
+    final cleaned = line.replaceFirst(label, '').replaceFirst(RegExp(r'^[:：\s]+'), '').trim();
+    return cleaned.isEmpty ? null : cleaned;
+  }
+
   static String? _pickWebsite(List<String> urls) {
     if (urls.isEmpty) return null;
     String domainOf(String u) {
@@ -338,11 +518,15 @@ class FieldParser {
 
     for (final u in urls) {
       final d = domainOf(u);
+      if (d.contains('linkedin')) continue;
       if (!_watermarkDomains.contains(d) &&
           !_watermarkDomains.any((w) => d.endsWith(w))) {
         return u;
       }
     }
-    return urls.first;
+    return urls.firstWhere(
+      (u) => !u.toLowerCase().contains('linkedin'),
+      orElse: () => urls.first,
+    );
   }
 }

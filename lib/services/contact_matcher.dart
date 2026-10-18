@@ -40,9 +40,16 @@ class ContactMatcher {
 
       final phones = [
         fields.personalPhone,
+        fields.whatsapp,
         fields.companyPhone,
+        fields.directLine,
       ];
-      final cPhones = [c.personalPhone, c.companyPhone];
+      final cPhones = [
+        c.personalPhone,
+        c.whatsapp,
+        c.companyPhone,
+        c.directLine,
+      ];
       if (_anyPhoneMatch(phones, cPhones)) {
         score += 0.35;
         reasons.add('phone');

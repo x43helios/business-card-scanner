@@ -50,6 +50,11 @@ class ExportService {
         .replaceAll('\n', '\\n');
   }
 
+  void _noteLine(StringBuffer buf, String label, String? value) {
+    if (value == null || value.trim().isEmpty) return;
+    buf.writeln('NOTE:${_escV('$label: ${value.trim()}')}');
+  }
+
   String _toVCard(List<Contact> contacts) {
     final buf = StringBuffer();
     for (final c in contacts) {
@@ -61,11 +66,20 @@ class ExportService {
       }
       if (c.title != null) buf.writeln('TITLE:${_escV(c.title)}');
       if (c.companyName != null) buf.writeln('ORG:${_escV(c.companyName)}');
+      if (c.department != null) {
+        buf.writeln('ORG:${_escV(c.companyName)};${_escV(c.department)}');
+      }
       if (c.personalPhone != null) {
         buf.writeln('TEL;TYPE=CELL:${_escV(c.personalPhone)}');
       }
+      if (c.whatsapp != null && c.whatsapp != c.personalPhone) {
+        buf.writeln('TEL;TYPE=CELL:${_escV(c.whatsapp)}');
+      }
       if (c.companyPhone != null) {
         buf.writeln('TEL;TYPE=WORK:${_escV(c.companyPhone)}');
+      }
+      if (c.directLine != null) {
+        buf.writeln('TEL;TYPE=WORK:${_escV(c.directLine)}');
       }
       if (c.fax != null) buf.writeln('TEL;TYPE=FAX:${_escV(c.fax)}');
       if (c.personalEmail != null) {
@@ -79,6 +93,30 @@ class ExportService {
       }
       if (c.companyWebsite != null) {
         buf.writeln('URL:${_escV(c.companyWebsite)}');
+      }
+      if (c.linkedIn != null) {
+        buf.writeln('URL:${_escV(c.linkedIn)}');
+      }
+      if (c.qrInfo != null) {
+        buf.writeln('URL:${_escV(c.qrInfo)}');
+      }
+      if (c.wechat != null) {
+        buf.writeln('IMPP:weixin:${_escV(c.wechat)}');
+      }
+      if (c.lineId != null) {
+        buf.writeln('IMPP:line:${_escV(c.lineId)}');
+      }
+      _noteLine(buf, 'Qualifications', c.qualifications);
+      _noteLine(buf, 'Education', c.education);
+      _noteLine(buf, 'Services', c.services);
+      _noteLine(buf, 'Hours', c.businessHours);
+      _noteLine(buf, 'Slogan', c.slogan);
+      _noteLine(buf, 'Notes', c.notes);
+      if (c.extension != null) {
+        _noteLine(buf, 'Ext', c.extension);
+      }
+      if (c.socialMedia != null) {
+        _noteLine(buf, 'Social', c.socialMedia);
       }
       if (c.tags.isNotEmpty) {
         buf.writeln('CATEGORIES:${c.tags.map(_escV).join(',')}');
@@ -96,35 +134,89 @@ class ExportService {
     return s;
   }
 
+  static const csvHeaders = [
+    'chinese_name',
+    'english_name',
+    'title_chinese',
+    'title_english',
+    'qualifications',
+    'education',
+    'company_name_chinese',
+    'company_name_english',
+    'department',
+    'personal_phone',
+    'whatsapp',
+    'wechat',
+    'line_id',
+    'company_phone',
+    'direct_line',
+    'extension',
+    'fax',
+    'personal_email',
+    'company_email',
+    'company_website',
+    'linkedin',
+    'social_media',
+    'company_address_chinese',
+    'company_address_english',
+    'room_floor',
+    'district',
+    'postal_code',
+    'slogan',
+    'services',
+    'business_hours',
+    'qr_info',
+    'notes',
+    // Legacy bridge columns
+    'name',
+    'title',
+    'company_name',
+    'company_address',
+    'tags',
+    'card_count',
+  ];
+
   String _toCsv(List<Contact> contacts) {
-    final headers = [
-      'name',
-      'title',
-      'company_name',
-      'company_address',
-      'personal_phone',
-      'personal_email',
-      'company_phone',
-      'company_email',
-      'fax',
-      'company_website',
-      'tags',
-      'card_count',
-    ];
     final buf = StringBuffer();
-    buf.writeln(headers.join(','));
+    buf.writeln(csvHeaders.join(','));
     for (final c in contacts) {
       buf.writeln([
+        _csvCell(c.chineseName),
+        _csvCell(c.englishName),
+        _csvCell(c.titleChinese),
+        _csvCell(c.titleEnglish),
+        _csvCell(c.qualifications),
+        _csvCell(c.education),
+        _csvCell(c.companyNameChinese),
+        _csvCell(c.companyNameEnglish),
+        _csvCell(c.department),
+        _csvCell(c.personalPhone),
+        _csvCell(c.whatsapp),
+        _csvCell(c.wechat),
+        _csvCell(c.lineId),
+        _csvCell(c.companyPhone),
+        _csvCell(c.directLine),
+        _csvCell(c.extension),
+        _csvCell(c.fax),
+        _csvCell(c.personalEmail),
+        _csvCell(c.companyEmail),
+        _csvCell(c.companyWebsite),
+        _csvCell(c.linkedIn),
+        _csvCell(c.socialMedia),
+        _csvCell(c.companyAddressChinese),
+        _csvCell(c.companyAddressEnglish),
+        _csvCell(c.roomFloor),
+        _csvCell(c.district),
+        _csvCell(c.postalCode),
+        _csvCell(c.slogan),
+        _csvCell(c.services),
+        _csvCell(c.businessHours),
+        _csvCell(c.qrInfo),
+        _csvCell(c.notes),
         _csvCell(c.name),
         _csvCell(c.title),
         _csvCell(c.companyName),
         _csvCell(c.companyAddress),
-        _csvCell(c.personalPhone),
-        _csvCell(c.personalEmail),
-        _csvCell(c.companyPhone),
-        _csvCell(c.companyEmail),
-        _csvCell(c.fax),
-        _csvCell(c.companyWebsite),
         _csvCell(c.tags.join('|')),
         c.cards.length.toString(),
       ].join(','));
@@ -161,6 +253,11 @@ class ExportService {
     final bodyStyle = pw.TextStyle(fontSize: 11, font: cjk);
     final smallStyle = pw.TextStyle(fontSize: 10, font: cjk);
 
+    pw.Widget? line(String label, String? value) {
+      if (value == null || value.trim().isEmpty) return null;
+      return pw.Text('$label: $value', style: bodyStyle);
+    }
+
     doc.addPage(
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
@@ -178,6 +275,40 @@ class ExportService {
           ),
           pw.SizedBox(height: 16),
           ...contacts.map((c) {
+            final lines = <pw.Widget>[
+              pw.Text(c.displayName, style: headingStyle),
+              ...[
+                line('中文姓名', c.chineseName),
+                line('English name', c.englishName),
+                line('職銜', c.title),
+                line('資格', c.qualifications),
+                line('學歷', c.education),
+                line('公司', c.companyName),
+                line('部門', c.department),
+                line('地址', c.companyAddress),
+                line('Mobile', c.personalPhone),
+                line('WhatsApp', c.whatsapp),
+                line('WeChat', c.wechat),
+                line('LINE', c.lineId),
+                line('Tel', c.companyPhone),
+                line('Direct', c.directLine),
+                line('Ext', c.extension),
+                line('Email', c.personalEmail),
+                line('Work Email', c.companyEmail),
+                line('Fax', c.fax),
+                line('Web', c.companyWebsite),
+                line('LinkedIn', c.linkedIn),
+                line('Social', c.socialMedia),
+                line('Services', c.services),
+                line('Hours', c.businessHours),
+                line('Slogan', c.slogan),
+                line('QR', c.qrInfo),
+                line('Notes', c.notes),
+              ].whereType<pw.Widget>(),
+              if (c.tags.isNotEmpty)
+                pw.Text('Tags: ${c.tags.join(', ')}', style: bodyStyle),
+              pw.Text('Cards: ${c.cards.length}', style: bodyStyle),
+            ];
             return pw.Container(
               margin: const pw.EdgeInsets.only(bottom: 12),
               padding: const pw.EdgeInsets.all(10),
@@ -187,28 +318,7 @@ class ExportService {
               ),
               child: pw.Column(
                 crossAxisAlignment: pw.CrossAxisAlignment.start,
-                children: [
-                  pw.Text(c.displayName, style: headingStyle),
-                  if (c.title != null) pw.Text(c.title!, style: bodyStyle),
-                  if (c.companyName != null)
-                    pw.Text(c.companyName!, style: bodyStyle),
-                  if (c.companyAddress != null)
-                    pw.Text(c.companyAddress!, style: bodyStyle),
-                  if (c.personalPhone != null)
-                    pw.Text('Mobile: ${c.personalPhone}', style: bodyStyle),
-                  if (c.companyPhone != null)
-                    pw.Text('Tel: ${c.companyPhone}', style: bodyStyle),
-                  if (c.personalEmail != null)
-                    pw.Text('Email: ${c.personalEmail}', style: bodyStyle),
-                  if (c.companyEmail != null)
-                    pw.Text('Work Email: ${c.companyEmail}', style: bodyStyle),
-                  if (c.fax != null) pw.Text('Fax: ${c.fax}', style: bodyStyle),
-                  if (c.companyWebsite != null)
-                    pw.Text('Web: ${c.companyWebsite}', style: bodyStyle),
-                  if (c.tags.isNotEmpty)
-                    pw.Text('Tags: ${c.tags.join(', ')}', style: bodyStyle),
-                  pw.Text('Cards: ${c.cards.length}', style: bodyStyle),
-                ],
+                children: lines,
               ),
             );
           }),

@@ -32,7 +32,7 @@ void main() {
     final coordinator = OcrCoordinator(
       onDevice: _FakeOcr(
         const OcrResult(
-          fields: BusinessCardFields(name: 'Ada'),
+          fields: BusinessCardFields(englishName: 'Ada'),
           engine: OcrEngine.onDevice,
           succeeded: true,
         ),
@@ -63,7 +63,7 @@ void main() {
       ),
       cloud: _FakeOcr(
         const OcrResult(
-          fields: BusinessCardFields(name: 'Cloud'),
+          fields: BusinessCardFields(englishName: 'Cloud'),
           engine: OcrEngine.cloud,
           succeeded: true,
         ),
@@ -90,7 +90,7 @@ void main() {
       ),
       cloud: _FakeOcr(
         const OcrResult(
-          fields: BusinessCardFields(name: 'FromCloud'),
+          fields: BusinessCardFields(englishName: 'FromCloud'),
           engine: OcrEngine.cloud,
           succeeded: true,
         ),
@@ -118,7 +118,7 @@ void main() {
       ),
       cloud: _FakeOcr(
         const OcrResult(
-          fields: BusinessCardFields(name: 'ShouldNot'),
+          fields: BusinessCardFields(englishName: 'ShouldNot'),
           engine: OcrEngine.cloud,
           succeeded: true,
         ),

@@ -13,10 +13,15 @@ void main() {
     String? phone,
     String? email,
   }) {
+    final hasCjk = name != null && RegExp(r'[\u4e00-\u9fff]').hasMatch(name);
+    final coCjk =
+        company != null && RegExp(r'[\u4e00-\u9fff]').hasMatch(company);
     return Contact(
       id: id,
-      name: name,
-      companyName: company,
+      chineseName: hasCjk ? name : null,
+      englishName: hasCjk ? null : name,
+      companyNameChinese: coCjk ? company : null,
+      companyNameEnglish: coCjk ? null : company,
       personalPhone: phone,
       personalEmail: email,
       createdAt: now,
@@ -29,7 +34,7 @@ void main() {
       contact(name: 'Ada', email: 'ada@example.com'),
     ];
     final fields = const BusinessCardFields(
-      name: 'Ada Lovelace',
+      englishName: 'Ada Lovelace',
       personalEmail: 'ada@example.com',
     );
     final matches = ContactMatcher.findMatches(fields, existing);
@@ -41,9 +46,8 @@ void main() {
     final existing = [
       contact(name: 'Bob Chan', phone: '+852 9123-4567'),
     ];
-    // Same name + overlapping phone digits → score above threshold
     final fields = const BusinessCardFields(
-      name: 'Bob Chan',
+      englishName: 'Bob Chan',
       personalPhone: '91234567',
     );
     final matches = ContactMatcher.findMatches(fields, existing);
@@ -57,8 +61,8 @@ void main() {
       contact(name: 'Zoe', company: 'Other Co', email: 'z@other.example'),
     ];
     final fields = const BusinessCardFields(
-      name: 'Alex',
-      companyName: 'Helios',
+      englishName: 'Alex',
+      companyNameEnglish: 'Helios',
       personalEmail: 'a@helios.example',
     );
     final matches = ContactMatcher.findMatches(fields, existing);

@@ -34,16 +34,11 @@ class ContactsProvider extends ChangeNotifier {
     if (q.isNotEmpty) {
       list = list.where((c) {
         final hay = [
+          ...c.primaryFields.searchableParts,
           c.name,
           c.title,
           c.companyName,
           c.companyAddress,
-          c.personalPhone,
-          c.personalEmail,
-          c.companyPhone,
-          c.companyEmail,
-          c.fax,
-          c.companyWebsite,
           ...c.tags,
         ].whereType<String>().join(' ').toLowerCase();
         return hay.contains(q);

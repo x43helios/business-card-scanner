@@ -12,9 +12,9 @@ void main() {
     final contacts = [
       Contact(
         id: 'c1',
-        name: '陳大文',
-        title: 'PM',
-        companyName: 'Helios',
+        chineseName: '陳大文',
+        titleChinese: 'PM',
+        companyNameEnglish: 'Helios',
         personalEmail: 'david@helios.example',
         personalPhone: '+85291234567',
         tags: const ['client'],
@@ -49,8 +49,10 @@ void main() {
     expect(vcfText, contains('陳大文'));
 
     final csvText = await csv.readAsString();
-    expect(csvText, contains('name,title,company_name'));
+    expect(csvText, contains('chinese_name'));
     expect(csvText, contains('Helios'));
+    expect(csvText, contains('chinese_name'));
+    expect(csvText, contains(',name,'));
 
     expect(await pdf.length(), greaterThan(100));
 
