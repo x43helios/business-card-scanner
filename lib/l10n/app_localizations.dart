@@ -132,7 +132,24 @@ class AppLocalizations {
       : 'Tip: pick an image whose filename contains demo/sample for stub OCR.';
   String get matchReasons => isZh ? '相符' : 'Matched on';
   String get emptyFieldHint => isZh ? '可手動填寫' : 'Optional — edit manually';
+  String get aiSection => isZh ? 'AI 欄位抽取' : 'AI field extraction';
+  String get aiFieldExtraction => isZh ? '啟用 AI 欄位抽取' : 'Enable AI field extraction';
+  String get aiFieldExtractionDesc => isZh
+      ? 'OCR 原文後以 AI 結構化為名片欄位；失敗時自動退回規則解析。需 API 金鑰。'
+      : 'After OCR, AI structures fields as JSON; falls back to regex on failure. Needs an API key.';
+  String get aiApiKey => isZh ? 'API 金鑰（執行時期）' : 'API key (runtime)';
+  String get aiApiKeyHint => isZh
+      ? '覆寫編譯期 CARD_AI_API_KEY；不會提交到 Git'
+      : 'Overrides build-time CARD_AI_API_KEY; never committed';
+  String get aiProvider => isZh ? '供應商' : 'Provider';
+  String get aiProviderHint => isZh ? 'openai 或 gemini（留空用預設）' : 'openai or gemini (empty = default)';
+  String get aiBaseUrl => isZh ? 'API Base URL' : 'API base URL';
+  String get aiModel => isZh ? '模型' : 'Model';
+  String get aiKeyMissing => isZh
+      ? '尚未設定金鑰 — 請在上方填入，或用 --dart-define=CARD_AI_API_KEY=… 建置'
+      : 'No API key — enter one above, or build with --dart-define=CARD_AI_API_KEY=…';
 }
+
 
 class _AppLocalizationsDelegate
     extends LocalizationsDelegate<AppLocalizations> {

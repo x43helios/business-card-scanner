@@ -6,6 +6,7 @@ import '../models/app_settings.dart';
 import '../providers/contacts_provider.dart';
 import '../providers/settings_provider.dart';
 import '../services/export_service.dart';
+import '../services/ocr/ai_flags.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -122,6 +123,179 @@ class SettingsScreen extends StatelessWidget {
             },
           ),
           const Divider(),
+          _SectionHeader(title: l10n.aiSection),
+          SwitchListTile(
+            secondary: const Icon(Icons.auto_awesome),
+            title: Text(l10n.aiFieldExtraction),
+            subtitle: Text(l10n.aiFieldExtractionDesc),
+            value: s.aiFieldExtractionEnabled,
+            onChanged: (v) => settingsProvider
+                .update((x) => x.copyWith(aiFieldExtractionEnabled: v)),
+          ),
+          ListTile(
+            leading: const Icon(Icons.vpn_key_outlined),
+            title: Text(l10n.aiApiKey),
+            subtitle: Text(
+              s.aiApiKey.isNotEmpty
+                  ? '•••••••• (${s.aiApiKey.length} chars)'
+                  : (kCardAiApiKey.isNotEmpty
+                      ? (l10n.isZh ? '使用編譯期金鑰' : 'Using build-time key')
+                      : l10n.aiKeyMissing),
+            ),
+            trailing: const Icon(Icons.edit_outlined),
+            onTap: () async {
+              final controller = TextEditingController(text: s.aiApiKey);
+              final saved = await showDialog<String>(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  title: Text(l10n.aiApiKey),
+                  content: TextField(
+                    controller: controller,
+                    obscureText: true,
+                    decoration: InputDecoration(
+                      hintText: l10n.aiApiKeyHint,
+                      border: const OutlineInputBorder(),
+                    ),
+                    autofocus: true,
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      child: Text(l10n.cancel),
+                    ),
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx, ''),
+                      child: Text(l10n.isZh ? '清除' : 'Clear'),
+                    ),
+                    FilledButton(
+                      onPressed: () => Navigator.pop(ctx, controller.text),
+                      child: Text(l10n.save),
+                    ),
+                  ],
+                ),
+              );
+              if (saved != null) {
+                await settingsProvider.update((x) => x.copyWith(aiApiKey: saved));
+              }
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.hub_outlined),
+            title: Text(l10n.aiProvider),
+            subtitle: Text(
+              s.aiProvider.isNotEmpty
+                  ? s.aiProvider
+                  : '$kCardAiProvider (${l10n.isZh ? "預設" : "default"})',
+            ),
+            onTap: () async {
+              final controller = TextEditingController(text: s.aiProvider);
+              final saved = await showDialog<String>(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  title: Text(l10n.aiProvider),
+                  content: TextField(
+                    controller: controller,
+                    decoration: InputDecoration(
+                      hintText: l10n.aiProviderHint,
+                      border: const OutlineInputBorder(),
+                    ),
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      child: Text(l10n.cancel),
+                    ),
+                    FilledButton(
+                      onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+                      child: Text(l10n.save),
+                    ),
+                  ],
+                ),
+              );
+              if (saved != null) {
+                await settingsProvider.update((x) => x.copyWith(aiProvider: saved));
+              }
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.link),
+            title: Text(l10n.aiBaseUrl),
+            subtitle: Text(
+              s.aiBaseUrl.isNotEmpty ? s.aiBaseUrl : kCardAiBaseUrl,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            onTap: () async {
+              final controller = TextEditingController(
+                text: s.aiBaseUrl.isNotEmpty ? s.aiBaseUrl : kCardAiBaseUrl,
+              );
+              final saved = await showDialog<String>(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  title: Text(l10n.aiBaseUrl),
+                  content: TextField(
+                    controller: controller,
+                    decoration: const InputDecoration(
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      child: Text(l10n.cancel),
+                    ),
+                    FilledButton(
+                      onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+                      child: Text(l10n.save),
+                    ),
+                  ],
+                ),
+              );
+              if (saved != null) {
+                await settingsProvider.update((x) => x.copyWith(aiBaseUrl: saved));
+              }
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.smart_toy_outlined),
+            title: Text(l10n.aiModel),
+            subtitle: Text(
+              s.aiModel.isNotEmpty ? s.aiModel : kCardAiModel,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            onTap: () async {
+              final controller = TextEditingController(
+                text: s.aiModel.isNotEmpty ? s.aiModel : kCardAiModel,
+              );
+              final saved = await showDialog<String>(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  title: Text(l10n.aiModel),
+                  content: TextField(
+                    controller: controller,
+                    decoration: const InputDecoration(
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      child: Text(l10n.cancel),
+                    ),
+                    FilledButton(
+                      onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+                      child: Text(l10n.save),
+                    ),
+                  ],
+                ),
+              );
+              if (saved != null) {
+                await settingsProvider.update((x) => x.copyWith(aiModel: saved));
+              }
+            },
+          ),
+          const Divider(),
           _SectionHeader(title: l10n.isZh ? '同步' : 'Sync'),
           ListTile(
             leading: const Icon(Icons.cloud_sync_outlined),
@@ -149,7 +323,7 @@ class SettingsScreen extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Text(
-              'v1.0.0 · Business Card Scanner / 名片掃描',
+              'v1.0.6 · Business Card Scanner / 名片掃描',
               style: Theme.of(context).textTheme.bodySmall,
               textAlign: TextAlign.center,
             ),
