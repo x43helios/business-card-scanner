@@ -4,10 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../l10n/app_localizations.dart';
-import '../../models/business_card_fields.dart';
 import '../../models/ocr_result.dart';
 import '../../providers/settings_provider.dart';
+import '../../services/crash_log.dart';
 import '../../services/ocr/ocr_coordinator.dart';
+import '../../services/ocr_flags.dart';
 import 'review_fields_screen.dart';
 
 class ProcessingScreen extends StatefulWidget {
@@ -25,7 +26,17 @@ class _ProcessingScreenState extends State<ProcessingScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _run());
+    // Never start ML Kit on the same frame as route push / activity resume.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Future<void>(() async {
+        // Extra settle time after Preparing → Processing transition.
+        await Future<void>.delayed(const Duration(milliseconds: 250));
+        if (!mounted) return;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          Future.microtask(() => _run());
+        });
+      });
+    });
   }
 
   Future<bool> _askConsent() async {
@@ -52,10 +63,38 @@ class _ProcessingScreenState extends State<ProcessingScreen> {
     return result ?? false;
   }
 
+  Future<void> _goReview(OcrResult result) async {
+    if (!mounted) return;
+    await Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (_) => ReviewFieldsScreen(
+          imagePath: widget.imagePath,
+          initialFields: result.fields,
+          ocrResult: result,
+        ),
+      ),
+    );
+  }
+
   Future<void> _run() async {
     final l10n = AppLocalizations.of(context);
+    await CrashLog.log('ProcessingScreen._run path=${widget.imagePath}');
+    if (!mounted) return;
+
+    // Capture providers before further awaits (lint: use_build_context_synchronously).
     final settingsProvider = context.read<SettingsProvider>();
     final coordinator = OcrCoordinator();
+
+    if (!kEnableMlKit) {
+      await CrashLog.log('ProcessingScreen: ML Kit flag off → empty review');
+      await _goReview(
+        OcrResult.failure(
+          OcrEngine.onDevice,
+          'On-device ML Kit disabled (ENABLE_ML_KIT=false).',
+        ),
+      );
+      return;
+    }
 
     try {
       final file = File(widget.imagePath);
@@ -75,48 +114,23 @@ class _ProcessingScreenState extends State<ProcessingScreen> {
       );
 
       if (!mounted) return;
-
-      // Always open review so the user can fill fields manually if OCR failed.
-      // Soft-fail: if OCR reported failure, still proceed with empty/partial fields.
-      final fields = result.fields;
-      await Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-          builder: (_) => ReviewFieldsScreen(
-            imagePath: widget.imagePath,
-            initialFields: fields,
-            ocrResult: result,
-          ),
-        ),
+      await CrashLog.log(
+        'ProcessingScreen: OCR done succeeded=${result.succeeded} '
+        'engine=${result.engine}',
       );
-
-      // After returning from review is not expected (pushReplacement); if OCR
-      // failed and review was skipped somehow, surface a snackbar on prior route.
-      if (result.errorMessage != null && mounted) {
-        // no-op: review screen shows fields; error is in ocrResult
-      }
+      await _goReview(result);
     } catch (e, st) {
-      debugPrint('OCR processing failed: $e\n$st');
+      await CrashLog.log('OCR processing failed', e, st);
       if (!mounted) return;
 
       // Prefer navigating to manual review with empty fields over killing the flow.
-      if (!mounted) return;
       try {
-        final fallback = OcrResult.failure(
-          OcrEngine.onDevice,
-          e.toString(),
-        );
-        await Navigator.of(context).pushReplacement(
-          MaterialPageRoute(
-            builder: (_) => ReviewFieldsScreen(
-              imagePath: widget.imagePath,
-              initialFields: const BusinessCardFields(),
-              ocrResult: fallback,
-            ),
-          ),
+        await _goReview(
+          OcrResult.failure(OcrEngine.onDevice, e.toString()),
         );
         return;
-      } catch (navError) {
-        debugPrint('Fallback navigation failed: $navError');
+      } catch (navError, navSt) {
+        await CrashLog.log('Fallback navigation failed', navError, navSt);
       }
 
       if (!mounted) return;
@@ -144,6 +158,16 @@ class _ProcessingScreenState extends State<ProcessingScreen> {
                     FilledButton(
                       onPressed: () => Navigator.pop(context),
                       child: Text(l10n.cancel),
+                    ),
+                    const SizedBox(height: 8),
+                    TextButton(
+                      onPressed: () => _goReview(
+                        OcrResult.failure(
+                          OcrEngine.onDevice,
+                          'Skipped OCR — fill fields manually.',
+                        ),
+                      ),
+                      child: Text(l10n.isZh ? '略過辨識，手動填寫' : 'Skip OCR, fill manually'),
                     ),
                   ],
                 ),

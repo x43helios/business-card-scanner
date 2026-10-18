@@ -38,6 +38,7 @@ class AppLocalizations {
   String get settings => isZh ? '設定' : 'Settings';
   String get takePhoto => isZh ? '拍攝名片' : 'Take photo';
   String get pickGallery => isZh ? '從相簿選擇' : 'Choose from gallery';
+  String get preparing => isZh ? '準備中…' : 'Preparing…';
   String get processing => isZh ? '辨識中…' : 'Recognizing…';
   String get reviewFields => isZh ? '檢視／編輯欄位' : 'Review / edit fields';
   String get save => isZh ? '儲存' : 'Save';

@@ -9,6 +9,16 @@ Local-first Flutter MVP: capture/pick a business card → OCR → review/edit fi
 **Application ID (Android):** `com.x43helios.business_card_scanner`  
 **Display name:** 名片掃描
 
+## Crash-hardening (v0.1.2)
+
+Post-`image_picker` flow is deferred off the pick callback:
+
+1. **Preparing…** route (copy + validate magic bytes + downscale) before any OCR
+2. **Recognizing…** only after extra frame delay — never on the same stack as the picker result
+3. ML Kit Latin-first; Chinese script opt-in via `--dart-define=ENABLE_ML_KIT_CHINESE=true`
+4. Full ML Kit bypass: `--dart-define=ENABLE_ML_KIT=false` → empty review fields
+5. Errors append to app documents `crash_log.txt`
+
 ## Flutter version
 
 Developed with:

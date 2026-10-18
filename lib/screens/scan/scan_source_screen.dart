@@ -6,9 +6,9 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../../l10n/app_localizations.dart';
-import '../../services/scan_image_store.dart';
+import '../../services/crash_log.dart';
 import '../../services/scan_permissions.dart';
-import 'processing_screen.dart';
+import 'preparing_screen.dart';
 
 class ScanSourceScreen extends StatefulWidget {
   const ScanSourceScreen({super.key});
@@ -35,14 +35,15 @@ class _ScanSourceScreenState extends State<ScanSourceScreen> {
       if (response.isEmpty) return;
       final file = response.file;
       if (file != null) {
-        await _openProcessing(file.path);
+        await CrashLog.log('retrieveLostData recovered: ${file.path}');
+        _schedulePreparing(file.path);
         return;
       }
       if (response.exception != null && mounted) {
         _showError('${response.exception}');
       }
-    } catch (e) {
-      debugPrint('retrieveLostData failed: $e');
+    } catch (e, st) {
+      await CrashLog.log('retrieveLostData failed', e, st);
     }
   }
 
@@ -58,19 +59,28 @@ class _ScanSourceScreenState extends State<ScanSourceScreen> {
         return;
       }
 
+      await CrashLog.log('pickImage start source=$source');
       final x = await _picker.pickImage(
         source: source,
-        imageQuality: 90,
-        maxWidth: 2400,
+        imageQuality: 85,
+        maxWidth: 2000,
+        maxHeight: 2000,
         requestFullMetadata: false,
       );
       if (x == null) {
+        await CrashLog.log('pickImage cancelled');
         if (mounted) setState(() => _busy = false);
         return;
       }
-      await _openProcessing(x.path);
+
+      await CrashLog.log('pickImage returned path=${x.path}');
+      // CRITICAL: leave the image_picker completion stack before any
+      // navigation, file copy, or ML Kit. Activity resume is still settling.
+      if (!mounted) return;
+      setState(() => _busy = false);
+      _schedulePreparing(x.path);
     } catch (e, st) {
-      debugPrint('pickImage failed: $e\n$st');
+      await CrashLog.log('pickImage failed', e, st);
       if (!mounted) return;
       final l10n = AppLocalizations.of(context);
       _showError('${l10n.errorGeneric}: $e');
@@ -78,22 +88,28 @@ class _ScanSourceScreenState extends State<ScanSourceScreen> {
     }
   }
 
-  Future<void> _openProcessing(String rawPath) async {
-    try {
-      final stablePath = await ScanImageStore.persistAndValidate(rawPath);
-      if (!mounted) return;
-      await Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-          builder: (_) => ProcessingScreen(imagePath: stablePath),
-        ),
-      );
-    } catch (e, st) {
-      debugPrint('openProcessing failed: $e\n$st');
-      if (!mounted) return;
-      final l10n = AppLocalizations.of(context);
-      _showError('${l10n.errorGeneric}: $e');
-      setState(() => _busy = false);
-    }
+  /// Defer navigation to the next frame + microtask so we never open
+  /// Preparing/OCR in the same call stack as the image_picker result.
+  void _schedulePreparing(String rawPath) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Future.microtask(() async {
+        if (!mounted) return;
+        try {
+          await CrashLog.log('navigating to PreparingScreen');
+          if (!mounted) return;
+          await Navigator.of(context).pushReplacement(
+            MaterialPageRoute(
+              builder: (_) => PreparingScreen(rawImagePath: rawPath),
+            ),
+          );
+        } catch (e, st) {
+          await CrashLog.log('Preparing navigation failed', e, st);
+          if (!mounted) return;
+          final l10n = AppLocalizations.of(context);
+          _showError('${l10n.errorGeneric}: $e');
+        }
+      });
+    });
   }
 
   void _showError(String message) {
@@ -141,8 +157,10 @@ class _ScanSourceScreenState extends State<ScanSourceScreen> {
         0x00, 0x00, 0x3F, 0x00, 0x7B, 0xDF, 0xFF, 0xD9,
       ]);
       if (!mounted) return;
-      await _openProcessing(file.path);
-    } catch (e) {
+      setState(() => _busy = false);
+      _schedulePreparing(file.path);
+    } catch (e, st) {
+      await CrashLog.log('demo OCR failed', e, st);
       if (!mounted) return;
       setState(() => _busy = false);
     }

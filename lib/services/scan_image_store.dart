@@ -1,23 +1,40 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
+import 'package:image/image.dart' as img;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 
-/// Copies a picked/captured image into app-controlled storage and validates
-/// that the file is readable before OCR / ML Kit sees it.
+import 'crash_log.dart';
+
+/// Copies a picked/captured image into app-controlled storage, validates
+/// magic bytes, and downscales large images before OCR / ML Kit sees them.
 class ScanImageStore {
   ScanImageStore._();
 
   static const _minBytes = 32;
   static const _maxBytes = 40 * 1024 * 1024; // 40 MB safety cap
+  static const _maxEdge = 1600;
+  static const _downscaleOverBytes = 1 * 1024 * 1024; // 1 MB
 
-  /// Returns a stable absolute path under the app temp/docs directory.
+  /// Returns a stable absolute path under the app documents directory.
   /// Throws [StateError] with a clear message when the source is unusable.
   static Future<String> persistAndValidate(String sourcePath) async {
+    await CrashLog.log('ScanImageStore.persistAndValidate start: $sourcePath');
+
     if (sourcePath.trim().isEmpty) {
       throw StateError('Image path is empty.');
+    }
+
+    // content:// and other non-file schemes cannot be opened as File.
+    if (sourcePath.startsWith('content:') ||
+        sourcePath.startsWith('http:') ||
+        sourcePath.startsWith('https:')) {
+      throw StateError(
+        'Unsupported image URI scheme (expected a local file path): $sourcePath',
+      );
     }
 
     final source = File(sourcePath);
@@ -33,7 +50,6 @@ class ScanImageStore {
       throw StateError('Image file is too large ($length bytes).');
     }
 
-    // Read a small header to reject non-image / corrupt files before ML Kit.
     final header = await source.openRead(0, 16).first;
     if (!_looksLikeImage(header)) {
       throw StateError(
@@ -51,12 +67,74 @@ class ScanImageStore {
       throw StateError('Failed to copy image into app storage.');
     }
 
-    debugPrint('ScanImageStore: persisted $copiedLen bytes → ${dest.path}');
-    return dest.path;
+    final finalPath = await _maybeDownscale(dest);
+    await CrashLog.log(
+      'ScanImageStore: persisted → $finalPath '
+      '(${await File(finalPath).length()} bytes)',
+    );
+    return finalPath;
+  }
+
+  /// Decode + resize large images so ML Kit / Image.file stay memory-safe.
+  static Future<String> _maybeDownscale(File file) async {
+    try {
+      final bytes = await file.readAsBytes();
+      if (bytes.length < _downscaleOverBytes) {
+        // Still check dimensions — camera JPEGs can be huge but compressed small.
+      }
+
+      final decoded = img.decodeImage(bytes);
+      if (decoded == null) {
+        await CrashLog.log('ScanImageStore: decode failed; keeping original');
+        return file.path;
+      }
+
+      final needsResize =
+          decoded.width > _maxEdge || decoded.height > _maxEdge;
+      final needsReencode = bytes.length > _downscaleOverBytes || needsResize;
+      if (!needsReencode) return file.path;
+
+      img.Image sized = decoded;
+      if (needsResize) {
+        if (decoded.width >= decoded.height) {
+          sized = img.copyResize(
+            decoded,
+            width: _maxEdge,
+            interpolation: img.Interpolation.average,
+          );
+        } else {
+          sized = img.copyResize(
+            decoded,
+            height: _maxEdge,
+            interpolation: img.Interpolation.average,
+          );
+        }
+      }
+
+      final jpg = Uint8List.fromList(img.encodeJpg(sized, quality: 85));
+      // Always write .jpg after re-encode for ML Kit friendliness.
+      final outPath = p.setExtension(file.path, '.jpg');
+      final out = File(outPath);
+      await out.writeAsBytes(jpg, flush: true);
+      if (outPath != file.path) {
+        try {
+          await file.delete();
+        } catch (_) {}
+      }
+      await CrashLog.log(
+        'ScanImageStore: downscaled ${decoded.width}x${decoded.height} '
+        '→ ${sized.width}x${sized.height} (${jpg.length} bytes)',
+      );
+      return out.path;
+    } catch (e, st) {
+      await CrashLog.log('ScanImageStore downscale failed; keeping original', e, st);
+      return file.path;
+    }
   }
 
   static Future<Directory> _scanDir() async {
-    final base = await getTemporaryDirectory();
+    // Documents survive better than temp across activity / process edges.
+    final base = await getApplicationDocumentsDirectory();
     final dir = Directory(p.join(base.path, 'card_scans'));
     if (!await dir.exists()) {
       await dir.create(recursive: true);

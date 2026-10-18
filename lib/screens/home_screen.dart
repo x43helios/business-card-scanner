@@ -5,11 +5,11 @@ import 'package:provider/provider.dart';
 import '../l10n/app_localizations.dart';
 import '../providers/contacts_provider.dart';
 import '../services/export_service.dart';
-import '../services/scan_image_store.dart';
+import '../services/crash_log.dart';
 import '../widgets/contact_list_tile.dart';
 import '../widgets/tag_chips.dart';
 import 'contact_detail_screen.dart';
-import 'scan/processing_screen.dart';
+import 'scan/preparing_screen.dart';
 import 'scan/scan_source_screen.dart';
 import 'settings_screen.dart';
 
@@ -46,15 +46,21 @@ class _HomeScreenState extends State<HomeScreen> {
         }
         return;
       }
-      final stable = await ScanImageStore.persistAndValidate(file.path);
+      await CrashLog.log('HomeScreen retrieveLostData: ${file.path}');
       if (!mounted) return;
-      await Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => ProcessingScreen(imagePath: stable),
-        ),
-      );
-    } catch (e) {
-      debugPrint('HomeScreen retrieveLostData: $e');
+      // Defer off the recover callback / activity-resume stack.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        Future.microtask(() async {
+          if (!mounted) return;
+          await Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => PreparingScreen(rawImagePath: file.path),
+            ),
+          );
+        });
+      });
+    } catch (e, st) {
+      await CrashLog.log('HomeScreen retrieveLostData failed', e, st);
     }
   }
 
