@@ -5,9 +5,8 @@ import '../../models/business_card_fields.dart';
 /// Tuned for Hong Kong bilingual (繁/簡 + English) cards:
 /// - WhatsApp / 手機 labels → personalPhone
 /// - HK 8-digit mobiles with spaces (e.g. `5996 1224`)
-/// - Company keywords (診所 / Clinic / Ltd …)
-/// - Name: prefer CJK person name; if English personal name also present,
-///   combine as `中文名 / English Name` (consistent bilingual scheme).
+/// - Company keywords (診所 / Clinic / Ltd / Centre …)
+/// - Name & company: bilingual scheme `中文 / English` when both present.
 class FieldParser {
   static final _emailRe = RegExp(
     r'[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}',
@@ -38,7 +37,7 @@ class FieldParser {
     caseSensitive: false,
   );
   static final _companyKw = RegExp(
-    r'(診所|中心|醫院|有限公司|公司|Ltd\.?|Limited|Clinic|Company|Medical|Corporation|Inc\.?)',
+    r'(診所|中心|醫院|有限公司|公司|Ltd\.?|Limited|Clinic|Company|Medical|Corporation|Inc\.?|Centre|Center)',
     caseSensitive: false,
   );
   static final _titleKw = RegExp(
@@ -172,16 +171,54 @@ class FieldParser {
             !looksLikePhoneOnly(l))
         .toList();
 
-    // --- Company ---
-    final companyLines =
-        contentLines.where((l) => _companyKw.hasMatch(l)).toList();
-    if (companyLines.isNotEmpty) {
-      // Prefer Chinese company line when present.
-      companyName = companyLines.firstWhere(
-        (l) => RegExp(r'[\u4e00-\u9fff]').hasMatch(l),
-        orElse: () => companyLines.first,
-      );
+    // --- Company (CJK + English; same bilingual scheme as name) ---
+    // Scheme: `港恩中醫診所` alone, or
+    // `港恩中醫診所 / GLORY-IN CHINESE MEDICAL CLINIC` when both present.
+    final cjkRe = RegExp(r'[\u4e00-\u9fff]');
+    bool isEnglishCompanyLine(String l) {
+      if (cjkRe.hasMatch(l)) return false;
+      if (!_companyKw.hasMatch(l)) return false;
+      // ALL-CAPS (allow hyphens/spaces/punct) or Title-ish with company kw.
+      final letters = RegExp(r'[A-Za-z]').allMatches(l).length;
+      if (letters < 4) return false;
+      final upper = RegExp(r'[A-Z]').allMatches(l).length;
+      final isMostlyUpper = upper >= letters * 0.7;
+      final isTitleish = RegExp(
+        r"^[A-Z][A-Za-z0-9.'\-&]*(?:\s+[A-Z][A-Za-z0-9.'\-&]*)+$",
+      ).hasMatch(l);
+      return isMostlyUpper || isTitleish;
     }
+
+    String? cjkCompany;
+    String? enCompany;
+    for (var i = 0; i < contentLines.length; i++) {
+      final l = contentLines[i];
+      if (!_companyKw.hasMatch(l) && cjkCompany == null) continue;
+      if (cjkRe.hasMatch(l) && _companyKw.hasMatch(l)) {
+        cjkCompany ??= l;
+        // Immediate next line often English counterpart on HK cards.
+        if (i + 1 < contentLines.length) {
+          final next = contentLines[i + 1];
+          if (isEnglishCompanyLine(next) ||
+              (!cjkRe.hasMatch(next) &&
+                  _companyKw.hasMatch(next) &&
+                  RegExp(r'[A-Za-z]').hasMatch(next))) {
+            enCompany ??= next;
+          }
+        }
+      } else if (isEnglishCompanyLine(l) ||
+          (!cjkRe.hasMatch(l) && _companyKw.hasMatch(l))) {
+        enCompany ??= l;
+      }
+    }
+    if (cjkCompany != null && enCompany != null) {
+      companyName = '$cjkCompany / $enCompany';
+    } else {
+      companyName = cjkCompany ?? enCompany;
+    }
+
+    bool isCompanyLine(String l) =>
+        l == companyName || l == cjkCompany || l == enCompany;
 
     // --- Name (CJK preferred; bilingual combine when both present) ---
     // Scheme: `張敏芝` alone, or `張敏芝 / Cathy Cheung` when English personal
@@ -189,7 +226,7 @@ class FieldParser {
     String? cjkName;
     String? enName;
     for (final l in contentLines) {
-      if (companyName != null && l == companyName) continue;
+      if (isCompanyLine(l)) continue;
       if (_companyKw.hasMatch(l)) continue;
       if (_titleKw.hasMatch(l) && !_cjkPersonName.hasMatch(l)) continue;
       if (_degreeKw.hasMatch(l)) continue;
@@ -210,7 +247,7 @@ class FieldParser {
     // Fallback: first content line that is not company/title/degree/address.
     if (name == null && contentLines.isNotEmpty) {
       for (final l in contentLines) {
-        if (companyName != null && l == companyName) continue;
+        if (isCompanyLine(l)) continue;
         if (_companyKw.hasMatch(l)) continue;
         if (_degreeKw.hasMatch(l)) continue;
         if (_titleKw.hasMatch(l)) continue;
@@ -224,7 +261,7 @@ class FieldParser {
     final titleParts = <String>[];
     for (final l in contentLines) {
       if (name != null && (l == cjkName || l == enName || l == name)) continue;
-      if (companyName != null && l == companyName) continue;
+      if (isCompanyLine(l)) continue;
       if (_companyKw.hasMatch(l) && !_titleKw.hasMatch(l)) continue;
       if (_titleKw.hasMatch(l) ||
           (_degreeKw.hasMatch(l) && titleParts.isNotEmpty)) {
@@ -236,7 +273,7 @@ class FieldParser {
       // Legacy: second content line after name if it looks like a short title.
       for (final l in contentLines) {
         if (name != null && (l == cjkName || l == enName || l == name)) continue;
-        if (companyName != null && l == companyName) continue;
+        if (isCompanyLine(l)) continue;
         if (_companyKw.hasMatch(l) || _degreeKw.hasMatch(l)) continue;
         if (_addressKw.hasMatch(l) && l.length > 10) continue;
         titleParts.add(l);
@@ -263,7 +300,7 @@ class FieldParser {
     final addressParts = <String>[];
     for (final l in contentLines) {
       if (name != null && (l == cjkName || l == enName || l == name)) continue;
-      if (companyName != null && l == companyName) continue;
+      if (isCompanyLine(l)) continue;
       if (titleParts.contains(l)) continue;
       if (_degreeKw.hasMatch(l)) continue;
       if (_companyKw.hasMatch(l) && !_addressKw.hasMatch(l)) continue;

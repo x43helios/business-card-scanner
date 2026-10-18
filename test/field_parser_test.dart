@@ -72,12 +72,11 @@ www.gloryin.com
       isTrue,
       reason: 'name should contain 張敏芝 and/or Cathy, got: ${f.name}',
     );
+    expect(f.companyName, contains('港恩'));
+    expect(f.companyName!.toUpperCase(), contains('GLORY'));
     expect(
-      f.companyName != null &&
-          (f.companyName!.contains('港恩') ||
-              f.companyName!.toUpperCase().contains('GLORY')),
-      isTrue,
-      reason: 'company should contain 港恩 or GLORY, got: ${f.companyName}',
+      f.companyName,
+      '港恩中醫診所 / GLORY-IN CHINESE MEDICAL CLINIC',
     );
     expect(f.personalPhone, contains('5996'));
     expect(f.personalEmail, contains('cathymanchi@gloryin.com'));
