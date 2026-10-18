@@ -15,22 +15,24 @@ import 'services/crash_log.dart';
 import 'services/settings_service.dart';
 
 Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-
-  FlutterError.onError = (details) {
-    FlutterError.presentError(details);
-    debugPrint('FlutterError: ${details.exceptionAsString()}');
-    unawaited(CrashLog.log('FlutterError', details.exception, details.stack));
-  };
-  PlatformDispatcher.instance.onError = (error, stack) {
-    debugPrint('Uncaught platform/async error: $error\n$stack');
-    unawaited(CrashLog.log('PlatformDispatcher.onError', error, stack));
-    return true;
-  };
-
+  // Keep ensureInitialized + runApp in the SAME zone to avoid Flutter's
+  // "Zone mismatch" binding warning (and hard-to-debug callback bugs).
   // Do NOT await CrashLog / heavy I/O before runApp — that keeps Android on
   // the splash screen and looks like a force-close / freeze after install.
   runZonedGuarded(() {
+    WidgetsFlutterBinding.ensureInitialized();
+
+    FlutterError.onError = (details) {
+      FlutterError.presentError(details);
+      debugPrint('FlutterError: ${details.exceptionAsString()}');
+      unawaited(CrashLog.log('FlutterError', details.exception, details.stack));
+    };
+    PlatformDispatcher.instance.onError = (error, stack) {
+      debugPrint('Uncaught platform/async error: $error\n$stack');
+      unawaited(CrashLog.log('PlatformDispatcher.onError', error, stack));
+      return true;
+    };
+
     unawaited(CrashLog.log('main: app starting'));
     final settingsProvider = SettingsProvider(SettingsService());
     final contactsProvider = ContactsProvider(DatabaseHelper.instance);
