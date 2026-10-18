@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../../models/business_card_fields.dart';
+import '../../models/ocr_result.dart';
 import '../../providers/settings_provider.dart';
 import '../../services/ocr/ocr_coordinator.dart';
 import 'review_fields_screen.dart';
@@ -27,6 +29,7 @@ class _ProcessingScreenState extends State<ProcessingScreen> {
   }
 
   Future<bool> _askConsent() async {
+    if (!mounted) return false;
     final l10n = AppLocalizations.of(context);
     final result = await showDialog<bool>(
       context: context,
@@ -50,11 +53,22 @@ class _ProcessingScreenState extends State<ProcessingScreen> {
   }
 
   Future<void> _run() async {
+    final l10n = AppLocalizations.of(context);
     final settingsProvider = context.read<SettingsProvider>();
     final coordinator = OcrCoordinator();
+
     try {
+      final file = File(widget.imagePath);
+      if (!await file.exists()) {
+        throw StateError('Image missing at ${widget.imagePath}');
+      }
+      final len = await file.length();
+      if (len < 32) {
+        throw StateError('Image is empty or unreadable ($len bytes).');
+      }
+
       final result = await coordinator.recognize(
-        imageFile: File(widget.imagePath),
+        imageFile: file,
         settings: settingsProvider.settings,
         persistSettings: settingsProvider.persist,
         askCloudConsent: _askConsent,
@@ -63,18 +77,53 @@ class _ProcessingScreenState extends State<ProcessingScreen> {
       if (!mounted) return;
 
       // Always open review so the user can fill fields manually if OCR failed.
+      // Soft-fail: if OCR reported failure, still proceed with empty/partial fields.
+      final fields = result.fields;
       await Navigator.of(context).pushReplacement(
         MaterialPageRoute(
           builder: (_) => ReviewFieldsScreen(
             imagePath: widget.imagePath,
-            initialFields: result.fields,
+            initialFields: fields,
             ocrResult: result,
           ),
         ),
       );
-    } catch (e) {
+
+      // After returning from review is not expected (pushReplacement); if OCR
+      // failed and review was skipped somehow, surface a snackbar on prior route.
+      if (result.errorMessage != null && mounted) {
+        // no-op: review screen shows fields; error is in ocrResult
+      }
+    } catch (e, st) {
+      debugPrint('OCR processing failed: $e\n$st');
       if (!mounted) return;
-      setState(() => _error = e.toString());
+
+      // Prefer navigating to manual review with empty fields over killing the flow.
+      if (!mounted) return;
+      try {
+        final fallback = OcrResult.failure(
+          OcrEngine.onDevice,
+          e.toString(),
+        );
+        await Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (_) => ReviewFieldsScreen(
+              imagePath: widget.imagePath,
+              initialFields: const BusinessCardFields(),
+              ocrResult: fallback,
+            ),
+          ),
+        );
+        return;
+      } catch (navError) {
+        debugPrint('Fallback navigation failed: $navError');
+      }
+
+      if (!mounted) return;
+      setState(() => _error = '${l10n.errorGeneric}: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${l10n.errorGeneric}: $e')),
+      );
     }
   }
 

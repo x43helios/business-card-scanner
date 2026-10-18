@@ -1,5 +1,7 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
+
 import '../../models/app_settings.dart';
 import '../../models/ocr_result.dart';
 import 'cloud_ocr_service.dart';
@@ -20,6 +22,25 @@ class OcrCoordinator {
   final OcrService _cloud;
 
   Future<OcrResult> recognize({
+    required File imageFile,
+    required AppSettings settings,
+    required Future<AppSettings> Function(AppSettings) persistSettings,
+    required CloudConsentPrompt askCloudConsent,
+  }) async {
+    try {
+      return await _recognizeInner(
+        imageFile: imageFile,
+        settings: settings,
+        persistSettings: persistSettings,
+        askCloudConsent: askCloudConsent,
+      );
+    } catch (e, st) {
+      debugPrint('OcrCoordinator.recognize failed: $e\n$st');
+      return OcrResult.failure(OcrEngine.onDevice, 'OCR failed: $e');
+    }
+  }
+
+  Future<OcrResult> _recognizeInner({
     required File imageFile,
     required AppSettings settings,
     required Future<AppSettings> Function(AppSettings) persistSettings,

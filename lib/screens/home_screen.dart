@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../l10n/app_localizations.dart';
 import '../providers/contacts_provider.dart';
 import '../services/export_service.dart';
+import '../services/scan_image_store.dart';
 import '../widgets/contact_list_tile.dart';
 import '../widgets/tag_chips.dart';
 import 'contact_detail_screen.dart';
+import 'scan/processing_screen.dart';
 import 'scan/scan_source_screen.dart';
 import 'settings_screen.dart';
 
@@ -20,6 +23,40 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   bool _selectMode = false;
   final _searchController = TextEditingController();
+  final _picker = ImagePicker();
+
+  @override
+  void initState() {
+    super.initState();
+    // After camera/gallery, Android may have killed MainActivity; recover the pick.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _recoverLostPick());
+  }
+
+  Future<void> _recoverLostPick() async {
+    try {
+      final response = await _picker.retrieveLostData();
+      if (response.isEmpty) return;
+      final file = response.file;
+      if (file == null) {
+        if (response.exception != null && mounted) {
+          final l10n = AppLocalizations.of(context);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('${l10n.errorGeneric}: ${response.exception}')),
+          );
+        }
+        return;
+      }
+      final stable = await ScanImageStore.persistAndValidate(file.path);
+      if (!mounted) return;
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => ProcessingScreen(imagePath: stable),
+        ),
+      );
+    } catch (e) {
+      debugPrint('HomeScreen retrieveLostData: $e');
+    }
+  }
 
   @override
   void dispose() {

@@ -1,3 +1,7 @@
+import 'dart:async';
+import 'dart:ui';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
@@ -11,20 +15,35 @@ import 'services/settings_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  final settingsProvider = SettingsProvider(SettingsService());
-  await settingsProvider.load();
-  final contactsProvider = ContactsProvider(DatabaseHelper.instance);
-  await contactsProvider.load();
 
-  runApp(
-    MultiProvider(
-      providers: [
-        ChangeNotifierProvider.value(value: settingsProvider),
-        ChangeNotifierProvider.value(value: contactsProvider),
-      ],
-      child: const BusinessCardScannerApp(),
-    ),
-  );
+  // Keep async / platform errors from killing the process; show in logs instead.
+  FlutterError.onError = (details) {
+    FlutterError.presentError(details);
+    debugPrint('FlutterError: ${details.exceptionAsString()}');
+  };
+  PlatformDispatcher.instance.onError = (error, stack) {
+    debugPrint('Uncaught platform/async error: $error\n$stack');
+    return true; // handled — do not abort
+  };
+
+  await runZonedGuarded(() async {
+    final settingsProvider = SettingsProvider(SettingsService());
+    await settingsProvider.load();
+    final contactsProvider = ContactsProvider(DatabaseHelper.instance);
+    await contactsProvider.load();
+
+    runApp(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider.value(value: settingsProvider),
+          ChangeNotifierProvider.value(value: contactsProvider),
+        ],
+        child: const BusinessCardScannerApp(),
+      ),
+    );
+  }, (error, stack) {
+    debugPrint('Zone error: $error\n$stack');
+  });
 }
 
 class BusinessCardScannerApp extends StatelessWidget {

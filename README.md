@@ -135,6 +135,17 @@ lib/
 - PDF: **pdf**; CSV/vCard: pure Dart
 - Share exports: **share_plus**
 
+## Crash fix (v1.0.1)
+
+Photo take/upload no longer hard-crashes the app:
+
+- Runtime camera / photos permission requests before pick
+- `retrieveLostData()` after Android kills MainActivity during camera/gallery
+- Image copied + validated before ML Kit
+- OCR / processing wrapped so failures open manual review or a snackbar
+- ProGuard keep rules for ML Kit in release builds
+
 ## License
+
 
 Private repository — all rights reserved by the owner.

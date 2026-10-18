@@ -6,6 +6,8 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../../services/scan_image_store.dart';
+import '../../services/scan_permissions.dart';
 import 'processing_screen.dart';
 
 class ScanSourceScreen extends StatefulWidget {
@@ -19,33 +21,85 @@ class _ScanSourceScreenState extends State<ScanSourceScreen> {
   final _picker = ImagePicker();
   bool _busy = false;
 
+  @override
+  void initState() {
+    super.initState();
+    // Android may kill MainActivity while the camera/gallery intent runs.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _recoverLostPick());
+  }
+
+  Future<void> _recoverLostPick() async {
+    if (_busy) return;
+    try {
+      final response = await _picker.retrieveLostData();
+      if (response.isEmpty) return;
+      final file = response.file;
+      if (file != null) {
+        await _openProcessing(file.path);
+        return;
+      }
+      if (response.exception != null && mounted) {
+        _showError('${response.exception}');
+      }
+    } catch (e) {
+      debugPrint('retrieveLostData failed: $e');
+    }
+  }
+
   Future<void> _pick(ImageSource source) async {
     if (_busy) return;
     setState(() => _busy = true);
     try {
+      final denied = await ScanPermissions.ensureFor(source);
+      if (denied != null) {
+        if (!mounted) return;
+        _showError(denied);
+        setState(() => _busy = false);
+        return;
+      }
+
       final x = await _picker.pickImage(
         source: source,
         imageQuality: 90,
         maxWidth: 2400,
+        requestFullMetadata: false,
       );
       if (x == null) {
-        setState(() => _busy = false);
+        if (mounted) setState(() => _busy = false);
         return;
       }
+      await _openProcessing(x.path);
+    } catch (e, st) {
+      debugPrint('pickImage failed: $e\n$st');
+      if (!mounted) return;
+      final l10n = AppLocalizations.of(context);
+      _showError('${l10n.errorGeneric}: $e');
+      setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _openProcessing(String rawPath) async {
+    try {
+      final stablePath = await ScanImageStore.persistAndValidate(rawPath);
       if (!mounted) return;
       await Navigator.of(context).pushReplacement(
         MaterialPageRoute(
-          builder: (_) => ProcessingScreen(imagePath: x.path),
+          builder: (_) => ProcessingScreen(imagePath: stablePath),
         ),
       );
-    } catch (e) {
+    } catch (e, st) {
+      debugPrint('openProcessing failed: $e\n$st');
       if (!mounted) return;
       final l10n = AppLocalizations.of(context);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${l10n.errorGeneric}: $e')),
-      );
+      _showError('${l10n.errorGeneric}: $e');
       setState(() => _busy = false);
     }
+  }
+
+  void _showError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
   }
 
   /// Creates a tiny placeholder JPEG named demo so stub OCR can run without
@@ -87,11 +141,7 @@ class _ScanSourceScreenState extends State<ScanSourceScreen> {
         0x00, 0x00, 0x3F, 0x00, 0x7B, 0xDF, 0xFF, 0xD9,
       ]);
       if (!mounted) return;
-      await Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-          builder: (_) => ProcessingScreen(imagePath: file.path),
-        ),
-      );
+      await _openProcessing(file.path);
     } catch (e) {
       if (!mounted) return;
       setState(() => _busy = false);
