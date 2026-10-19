@@ -15,7 +15,7 @@ Post-`image_picker` flow is deferred off the pick callback:
 
 1. **Preparing…** route (copy + validate magic bytes + downscale) before any OCR
 2. **Recognizing…** only after extra frame delay — never on the same stack as the picker result
-3. ML Kit Latin-first; Chinese script opt-in via `--dart-define=ENABLE_ML_KIT_CHINESE=true`
+3. ML Kit Latin + Chinese (Chinese default ON; disable with `--dart-define=ENABLE_ML_KIT_CHINESE=false`)
 4. Full ML Kit bypass: `--dart-define=ENABLE_ML_KIT=false` → empty review fields
 5. Errors append to app documents `crash_log.txt`
 
@@ -42,7 +42,7 @@ flutter --version
 | Export: vCard, CSV, PDF | ✅ |
 | On-device OCR → cloud fallback + consent gate | ✅ |
 | Android on-device OCR via Google ML Kit | ✅ (with demo/sidecar fallback) |
-| iOS Apple Vision | ⚠️ stub interface only (needs Mac/Xcode) |
+| iOS on-device OCR (ML Kit) | ⚠️ Podfile ready; build/run needs Mac/Xcode |
 | Google / iCloud sync | ❌ placeholder only |
 | Monetization | ❌ out of scope |
 
@@ -92,18 +92,24 @@ Or copy the APK to the phone and open it (enable “Install unknown apps” if n
 
 ### iOS (requires macOS + Xcode)
 
+**Simulator / IPA builds need a Mac.** Linux hosts cannot run Xcode, `pod install`, or the iOS Simulator.
+
 ```bash
-cd ios
-pod install   # if needed
-cd ..
-open ios/Runner.xcworkspace
+flutter pub get
+cd ios && pod install && cd ..
+open ios/Runner.xcworkspace   # not .xcodeproj
 # or:
 flutter run -d ios
 ```
 
-Camera / photo library usage strings are in `ios/Runner/Info.plist`.
+- Bundle ID: `com.x43helios.businesscardscanner`
+- Deployment target: **iOS 15.5** (Google ML Kit)
+- Camera / photo usage strings: `ios/Runner/Info.plist` (preserved)
+- Podfile: Chinese ML Kit + `permission_handler` camera/photos macros
+- Longer setup: [`ios/README.md`](ios/README.md)
+- Feature parity checklist: [`docs/ios-test-checklist.md`](docs/ios-test-checklist.md)
 
-Apple Vision is **not** wired yet (no Mac on the CI/build host). Keep `OcrCoordinator` + `OnDeviceOcrService`; replace the ML Kit call site with a Vision MethodChannel on a Mac when ready. Demo OCR still works on iOS Simulator.
+On-device OCR on iOS uses the same Google ML Kit plugin as Android (Latin + Chinese). Demo OCR works without a camera.
 
 ### Linux desktop (limited)
 
