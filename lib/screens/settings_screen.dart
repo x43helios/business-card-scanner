@@ -323,7 +323,7 @@ class SettingsScreen extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Text(
-              'v1.0.7 · Business Card Scanner / 名片掃描',
+              'v1.0.8 · Business Card Scanner / 名片掃描',
               style: Theme.of(context).textTheme.bodySmall,
               textAlign: TextAlign.center,
             ),
