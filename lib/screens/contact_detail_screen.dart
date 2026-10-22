@@ -190,8 +190,52 @@ class _ContactDetailScreenState extends State<ContactDetailScreen> {
           ),
           const SizedBox(height: 8),
           ...contact.cards.map((card) {
+            void openCardImage() {
+              final path = card.imagePath;
+              if (path != null && path.isNotEmpty) {
+                final file = File(path);
+                if (!file.existsSync()) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text(l10n.cardImageMissing)),
+                  );
+                  return;
+                }
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => _ImageViewer(
+                      path: path,
+                      title: l10n.openImage,
+                    ),
+                  ),
+                );
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text(l10n.cardImageNotSaved)),
+                );
+              }
+            }
+
+            Widget? leading;
+            if (card.imagePath != null && card.imagePath!.isNotEmpty) {
+              leading = ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: Image.file(
+                  File(card.imagePath!),
+                  width: 56,
+                  height: 56,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => const SizedBox(
+                    width: 56,
+                    height: 56,
+                    child: Icon(Icons.broken_image_outlined),
+                  ),
+                ),
+              );
+            }
+
             return Card(
               child: ListTile(
+                leading: leading,
                 title: Text(
                   card.fields.name ??
                       card.fields.companyName ??
@@ -202,22 +246,12 @@ class _ContactDetailScreenState extends State<ContactDetailScreen> {
                   '${DateFormat.yMMMd().add_Hm().format(card.createdAt.toLocal())}',
                 ),
                 isThreeLine: true,
-                trailing: card.imagePath != null
-                    ? IconButton(
-                        tooltip: l10n.openImage,
-                        icon: const Icon(Icons.image_outlined),
-                        onPressed: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => _ImageViewer(
-                                path: card.imagePath!,
-                                title: l10n.openImage,
-                              ),
-                            ),
-                          );
-                        },
-                      )
-                    : null,
+                onTap: openCardImage,
+                trailing: IconButton(
+                  tooltip: l10n.openImage,
+                  icon: const Icon(Icons.image_outlined),
+                  onPressed: openCardImage,
+                ),
               ),
             );
           }),

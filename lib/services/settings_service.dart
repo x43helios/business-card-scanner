@@ -36,7 +36,7 @@ class SettingsService {
 
     return AppSettings(
       language: language,
-      saveCardPhoto: p.getBool(_kSavePhoto) ?? false,
+      saveCardPhoto: p.getBool(_kSavePhoto) ?? true,
       cloudOcrConsentAsked: p.getBool(_kConsentAsked) ?? false,
       cloudOcrConsentGranted: p.getBool(_kConsentGranted) ?? false,
       localOnlyMode: p.getBool(_kLocalOnly) ?? false,

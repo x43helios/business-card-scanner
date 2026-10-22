@@ -51,7 +51,7 @@ class AppLocalizations {
   String get languageZh => '繁體中文';
   String get saveCardPhoto => isZh ? '儲存名片照片' : 'Save card photo';
   String get saveCardPhotoDesc =>
-      isZh ? '預設關閉。開啟後會將掃描影像一併保存。' : 'Default off. When on, scanned images are kept.';
+      isZh ? '預設開啟。關閉後儲存聯絡人時不保留名片影像。' : 'Default on. Turn off to skip keeping card images when saving.';
   String get cloudOcr => isZh ? '雲端 OCR' : 'Cloud OCR';
   String get cloudConsentStatus => isZh ? '同意狀態' : 'Consent status';
   String get consentNotAsked => isZh ? '尚未詢問' : 'Not asked yet';
@@ -121,6 +121,12 @@ class AppLocalizations {
   String get disagree => isZh ? '不同意' : 'Disagree';
   String get ocrSource => isZh ? '辨識來源' : 'OCR source';
   String get openImage => isZh ? '開啟名片照片' : 'Open card photo';
+  String get cardImageNotSaved => isZh
+      ? '尚未儲存名片照片。請到「設定」開啟「儲存名片照片」後重新掃描。'
+      : 'Card photo was not saved. Enable “Save card photo” in Settings, then scan again.';
+  String get cardImageMissing => isZh
+      ? '名片照片檔案已遺失。'
+      : 'Card photo file is missing.';
   String get selectForExport => isZh ? '選擇以匯出' : 'Select to export';
   String get exportSelected => isZh ? '匯出已選' : 'Export selected';
   String get done => isZh ? '完成' : 'Done';

@@ -85,7 +85,58 @@ class FieldMerge {
 
     // If AI missed a regex email/phone that isn't already placed, fill empty slots.
     out = _fillMissedContacts(out, regex);
+    out = _scrubDegreeLikeAddresses(out);
     return out;
+  }
+
+  /// Reject education/degree strings that AI (or OCR) put into address slots.
+  static BusinessCardFields _scrubDegreeLikeAddresses(BusinessCardFields o) {
+    var out = o;
+    final zh = _nz(o.companyAddressChinese);
+    final en = _nz(o.companyAddressEnglish);
+    String? edu = _nz(o.education);
+
+    if (zh != null && _looksLikeDegreeOrEducation(zh)) {
+      if (edu == null) {
+        edu = zh;
+      } else if (!edu.contains(zh)) {
+        edu = '$edu · $zh';
+      }
+      out = out.copyWith(clearCompanyAddressChinese: true, education: edu);
+    }
+    if (en != null && _looksLikeDegreeOrEducation(en)) {
+      final e2 = _nz(out.education) ?? edu;
+      if (e2 == null) {
+        out = out.copyWith(clearCompanyAddressEnglish: true, education: en);
+      } else if (!e2.contains(en)) {
+        out = out.copyWith(
+          clearCompanyAddressEnglish: true,
+          education: '$e2 · $en',
+        );
+      } else {
+        out = out.copyWith(clearCompanyAddressEnglish: true);
+      }
+    }
+    return out;
+  }
+
+  static final _degreeLike = RegExp(
+    r'(大學|大学|學士|学士|碩士|硕士|博士|'
+    r'Bachelor|Master\b|University|Degree|學院|学院|Diploma|研究所)',
+    caseSensitive: false,
+  );
+  static final _streetLike = RegExp(
+    r'(?:\d\s*號)|(?:號\s*\d)|道|街|樓|室|座|大廈|'
+    r'Room\s*[A-Z0-9]|Floor|Flat\b|Building|Street|Road|Avenue',
+    caseSensitive: false,
+  );
+
+  static bool _looksLikeDegreeOrEducation(String s) {
+    if (!_degreeLike.hasMatch(s)) return false;
+    // Real addresses almost never contain degree words; if they somehow do
+    // and also have strong street tokens, keep them.
+    if (_streetLike.hasMatch(s) && RegExp(r'\d').hasMatch(s)) return false;
+    return true;
   }
 
   static BusinessCardFields _fillMissedContacts(

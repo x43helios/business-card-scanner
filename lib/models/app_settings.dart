@@ -21,7 +21,7 @@ class AppSettings {
 
   const AppSettings({
     this.language = AppLanguage.system,
-    this.saveCardPhoto = false,
+    this.saveCardPhoto = true,
     this.cloudOcrConsentAsked = false,
     this.cloudOcrConsentGranted = false,
     this.localOnlyMode = false,

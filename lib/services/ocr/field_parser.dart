@@ -76,13 +76,28 @@ class FieldParser {
     r'Ph\.?\s*D\.?|MBA|CPA|CFA|MRCP|FRCS|註冊編號)',
     caseSensitive: false,
   );
+  /// Soft region hints — not enough alone to classify a line as an address
+  /// (degrees often start with 香港…大學).
+  static final _regionHintKw = RegExp(
+    r'(Hong Kong|香港|九龍|新界|Kowloon)',
+    caseSensitive: false,
+  );
+  /// Strong street / premises tokens. Avoid bare 號 (matches 註冊編號).
+  static final _streetTokenKw = RegExp(
+    r'(?:\d\s*號)|(?:號\s*\d)|道|街|樓|室|座|大廈|'
+    r'Room\s*[A-Z0-9]|Floor|Flat\b|Building|Street|Road|Avenue',
+    caseSensitive: false,
+  );
+  /// Legacy alias used by name/title skips that still want region+street.
   static final _addressKw = RegExp(
-    r'(號|道|街|樓|室|座|大廈|中心|Room|Floor|Flat|Building|Street|Road|'
-    r'Avenue|Hong Kong|香港|九龍|新界|Kowloon)',
+    r'(?:\d\s*號)|(?:號\s*\d)|道|街|樓|室|座|大廈|'
+    r'Room|Floor|Flat|Building|Street|Road|Avenue|'
+    r'Hong Kong|香港|九龍|新界|Kowloon',
     caseSensitive: false,
   );
   static final _degreeKw = RegExp(
-    r'(大學|學士|碩士|博士|Bachelor|Master|University|Degree|學院|Diploma)',
+    r'(大學|大学|學士|学士|碩士|硕士|博士|'
+    r'Bachelor|Master|University|Degree|學院|学院|Diploma|研究所)',
     caseSensitive: false,
   );
   static final _roomFloorRe = RegExp(
@@ -115,6 +130,26 @@ class FieldParser {
     'yellowpages.com.hk',
     'yp.com.hk',
   };
+
+
+  /// True when [line] looks like a street address, not education / registration.
+  static bool looksLikeStreetAddress(String line) {
+    final l = line.trim();
+    if (l.isEmpty) return false;
+    if (_degreeKw.hasMatch(l)) return false;
+    if (_qualKw.hasMatch(l)) return false;
+    if (_streetTokenKw.hasMatch(l)) return true;
+    // Region + another address-ish digit run (e.g. unit numbers) without 註冊
+    if (_regionHintKw.hasMatch(l) &&
+        RegExp(r'\d').hasMatch(l) &&
+        !l.contains('註冊') &&
+        l.length > 6) {
+      // Still reject pure degree-ish fragments without street tokens
+      if (_degreeKw.hasMatch(l)) return false;
+      return _streetTokenKw.hasMatch(l);
+    }
+    return false;
+  }
 
   static BusinessCardFields parse(String raw) {
     final lines = raw
@@ -431,7 +466,7 @@ class FieldParser {
       }
     }
 
-    // Address
+    // Address — require street tokens; never copy degree / registration lines
     final addrZh = <String>[];
     final addrEn = <String>[];
     for (final l in contentLines) {
@@ -440,8 +475,9 @@ class FieldParser {
       if (qualParts.contains(l) || eduParts.contains(l)) continue;
       if (l == titleChinese || l == titleEnglish) continue;
       if (_degreeKw.hasMatch(l)) continue;
-      if (_companyKw.hasMatch(l) && !_addressKw.hasMatch(l)) continue;
-      if (_addressKw.hasMatch(l)) {
+      if (_qualKw.hasMatch(l)) continue;
+      if (_companyKw.hasMatch(l) && !looksLikeStreetAddress(l)) continue;
+      if (looksLikeStreetAddress(l)) {
         if (_cjkRe.hasMatch(l)) {
           addrZh.add(l);
         } else {

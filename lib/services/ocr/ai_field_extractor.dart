@@ -80,6 +80,7 @@ Rules:
 - Prefer Chinese company/person names in chinese* fields and English in english* fields.
 - qualifications = professional registration (e.g. 註冊中醫師, R.C.M.P., 註冊編號).
 - education = degree lines (大學/學士/碩士 etc.), not job title.
+- companyAddressChinese / companyAddressEnglish = street addresses only (樓/室/道/街/號, Room/Floor/Street). NEVER put education or degree lines there; use null if the card has no street address.
 - For websites, prefer the clinic/company domain over watermark directories (e.g. prefer gloryin.com over chinesedoctor.com.hk).
 - WhatsApp numbers go in whatsapp (and may also be personalPhone).
 - Do not invent values not supported by the text.

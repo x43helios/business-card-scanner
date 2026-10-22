@@ -156,4 +156,20 @@ void main() {
     expect(result.fields.companyWebsite, contains('gloryin.com'));
     await tmp.delete();
   });
+
+  test('FieldMerge scrubs degree-like AI address into education', () {
+    final regex = FieldParser.parse(gloryRaw);
+    const ai = BusinessCardFields(
+      chineseName: '張敏芝',
+      englishName: 'Cathy Cheung',
+      education: null,
+      companyAddressChinese: '香港浸會大學中醫學碩士(內科專業)',
+      personalEmail: 'cathymanchi@gloryin.com',
+    );
+    final m = FieldMerge.merge(ai: ai, regex: regex);
+    expect(m.companyAddressChinese, isNull,
+        reason: 'degree must not stay in address');
+    expect(m.education, contains('浸會'));
+    expect(m.education, contains('碩士'));
+  });
 }

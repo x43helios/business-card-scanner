@@ -89,5 +89,38 @@ www.gloryin.com
     );
     expect(f.education, isNotNull);
     expect(f.education, contains('大學'));
+    expect(f.education, contains('碩士'));
+    // Education / registration must NEVER land in address fields
+    expect(f.companyAddressChinese, isNull,
+        reason: 'got addressZh=${f.companyAddressChinese}');
+    expect(f.companyAddressEnglish, isNull,
+        reason: 'got addressEn=${f.companyAddressEnglish}');
+    expect(f.companyAddress, isNull);
+  });
+
+  test('FieldParser rejects degree lines even when they contain 香港', () {
+    const raw = '''
+張三
+某某診所
+香港浸會大學中醫學碩士(內科專業)
+香港九龍尖沙咀彌敦道 100 號 8 樓
+''';
+    final f = FieldParser.parse(raw);
+    expect(f.education, contains('碩士'));
+    expect(f.companyAddressChinese, isNotNull);
+    expect(f.companyAddressChinese, contains('彌敦道'));
+    expect(f.companyAddressChinese, isNot(contains('碩士')));
+    expect(f.companyAddressChinese, isNot(contains('浸會')));
+  });
+
+  test('FieldParser does not treat 註冊編號 as address', () {
+    const raw = '''
+李四
+註冊中醫師 R.C.M.P.(註冊編號 : 007014)
+''';
+    final f = FieldParser.parse(raw);
+    expect(f.companyAddressChinese, isNull);
+    expect(f.companyAddressEnglish, isNull);
+    expect(f.qualifications, isNotNull);
   });
 }
