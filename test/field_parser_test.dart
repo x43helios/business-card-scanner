@@ -123,4 +123,16 @@ www.gloryin.com
     expect(f.companyAddressEnglish, isNull);
     expect(f.qualifications, isNotNull);
   });
+
+  test("FieldParser rejects simplified-Chinese degree as address", () {
+    const raw = """
+港恩中医诊所
+张敏芝
+香港浸会大学中医学硕士(内科专业)
+""";
+    final f = FieldParser.parse(raw);
+    expect(f.companyAddressChinese, isNull, reason: "got ${f.companyAddressChinese}");
+    expect(f.education, isNotNull);
+    expect(f.education, contains("硕士"));
+  });
 }
