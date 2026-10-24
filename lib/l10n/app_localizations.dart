@@ -154,6 +154,23 @@ class AppLocalizations {
   String get aiKeyMissing => isZh
       ? '尚未設定金鑰 — 請在上方填入，或用 --dart-define=CARD_AI_API_KEY=… 建置'
       : 'No API key — enter one above, or build with --dart-define=CARD_AI_API_KEY=…';
+  String get refreshAiFields => isZh ? '重新抽取 AI 欄位' : 'Refresh AI fields';
+  String get refreshAiSuccess => isZh ? 'AI 欄位已更新' : 'AI fields updated';
+  String get refreshAiNoRawText => isZh
+      ? '沒有 OCR 原文，無法重新抽取'
+      : 'No OCR text available to re-extract';
+  String get refreshAiNoKey => isZh
+      ? '尚未設定 API 金鑰，請到設定填入'
+      : 'No API key — set one in Settings';
+  String get refreshAiDisabled => isZh
+      ? '請先在設定啟用 AI 欄位抽取'
+      : 'Enable AI field extraction in Settings first';
+  String get refreshAiEmpty => isZh
+      ? 'AI 未回傳欄位，請稍後再試'
+      : 'AI returned no fields — try again later';
+  String get refreshAiFailed => isZh
+      ? 'AI 抽取失敗'
+      : 'AI extraction failed';
 }
 
 

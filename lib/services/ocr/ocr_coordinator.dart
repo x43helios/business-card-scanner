@@ -8,10 +8,21 @@ import '../crash_log.dart';
 import 'ai_field_extractor.dart';
 import 'cloud_ocr_service.dart';
 import 'field_merge.dart';
+import 'field_parser.dart';
 import 'ocr_service.dart';
 import 'on_device_ocr_service.dart';
 
 typedef CloudConsentPrompt = Future<bool> Function();
+
+/// Hard failure from [OcrCoordinator.enrichWithAi] (refresh UI / callers).
+class AiEnrichException implements Exception {
+  AiEnrichException(this.code, [this.detail]);
+  final String code;
+  final String? detail;
+
+  @override
+  String toString() => detail == null ? 'AiEnrichException($code)' : 'AiEnrichException($code: $detail)';
+}
 
 /// Policy: on-device first → optional cloud → optional AI field extraction merge.
 class OcrCoordinator {
@@ -93,9 +104,31 @@ class OcrCoordinator {
   }
 
   /// After OCR: if AI enabled + rawText, extract JSON fields and merge with regex.
+  /// Soft-fails (returns [base]) on any error so scanning never blocks.
   Future<OcrResult> _maybeAiEnrich(OcrResult base, AppSettings settings) async {
+    try {
+      return await enrichWithAi(base, settings);
+    } on AiEnrichException catch (e) {
+      if (e.code == 'empty_raw' || e.code == 'disabled' || e.code == 'no_api_key') {
+        return base;
+      }
+      await CrashLog.log('OcrCoordinator AI enrich soft-fail: ${e.code}');
+      return base;
+    } catch (e, st) {
+      await CrashLog.log('OcrCoordinator AI enrich soft-fail', e, st);
+      return base;
+    }
+  }
+
+  /// Re-run LLM field extraction on existing OCR [base.rawText] and merge.
+  ///
+  /// Does **not** re-run ML Kit / cloud OCR. Shared by scan path and the
+  /// review-page refresh control. Throws [AiEnrichException] on hard failures.
+  Future<OcrResult> enrichWithAi(OcrResult base, AppSettings settings) async {
     final raw = base.rawText.trim();
-    if (raw.isEmpty) return base;
+    if (raw.isEmpty) {
+      throw AiEnrichException('empty_raw', 'No OCR raw text to enrich');
+    }
 
     final cfg = AiExtractConfig.resolve(
       enabled: settings.aiFieldExtractionEnabled,
@@ -104,30 +137,32 @@ class OcrCoordinator {
       runtimeModel: settings.aiModel,
       runtimeProvider: settings.aiProvider,
     );
-    if (!cfg.enabled || cfg.apiKey.isEmpty) return base;
-
-    try {
-      await CrashLog.log('OcrCoordinator: AI field extraction starting');
-      final aiFields = await _ai.extract(raw, config: cfg);
-      if (aiFields == null || aiFields.isEmpty) {
-        await CrashLog.log('OcrCoordinator: AI returned empty — keeping regex');
-        return base;
-      }
-      final regexFields = FieldParser.parse(raw);
-      // AI + regex(raw), then fill any remaining empties from base OCR fields.
-      final merged = FieldMerge.merge(ai: aiFields, regex: regexFields);
-      final finalFields = FieldMerge.merge(ai: merged, regex: base.fields);
-      await CrashLog.log('OcrCoordinator: AI merge done');
-      return OcrResult(
-        fields: finalFields,
-        rawText: base.rawText,
-        engine: base.engine,
-        succeeded: !finalFields.isEmpty,
-        errorMessage: base.errorMessage,
-      );
-    } catch (e, st) {
-      await CrashLog.log('OcrCoordinator AI enrich soft-fail', e, st);
-      return base;
+    if (!cfg.enabled) {
+      throw AiEnrichException('disabled', 'AI field extraction is disabled');
     }
+    if (cfg.apiKey.isEmpty) {
+      throw AiEnrichException('no_api_key', 'No API key configured');
+    }
+
+    await CrashLog.log('OcrCoordinator: AI field extraction starting');
+    final aiFields = await _ai.extract(raw, config: cfg);
+    if (aiFields == null || aiFields.isEmpty) {
+      await CrashLog.log('OcrCoordinator: AI returned empty — keeping prior');
+      throw AiEnrichException('empty_ai', 'AI returned no fields');
+    }
+    final regexFields = FieldParser.parse(raw);
+    // AI + regex(raw), then fill any remaining empties from base OCR fields.
+    final merged = FieldMerge.merge(ai: aiFields, regex: regexFields);
+    final finalFields = FieldMerge.merge(ai: merged, regex: base.fields);
+    final aiKeys = FieldMerge.aiContributedKeys(ai: aiFields, merged: finalFields);
+    await CrashLog.log('OcrCoordinator: AI merge done (${aiKeys.length} AI keys)');
+    return OcrResult(
+      fields: finalFields,
+      rawText: base.rawText,
+      engine: base.engine,
+      succeeded: !finalFields.isEmpty,
+      errorMessage: base.errorMessage,
+      aiContributedFields: aiKeys,
+    );
   }
 }

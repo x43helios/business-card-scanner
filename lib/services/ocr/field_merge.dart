@@ -188,4 +188,28 @@ class FieldMerge {
     final t = s?.trim();
     return (t == null || t.isEmpty) ? null : t;
   }
+
+  /// Keys where non-empty AI values match the final merged slot (trim-normalized).
+  ///
+  /// Compares [BusinessCardFields.toMap] keys except legacy bridges
+  /// (`name`, `title`, `companyName`, `companyAddress`).
+  /// Scrubbed-away AI address keys will not appear (correct); education only
+  /// appears if the final education value equals the AI education value.
+  static Set<String> aiContributedKeys({
+    required BusinessCardFields ai,
+    required BusinessCardFields merged,
+  }) {
+    const legacy = {'name', 'title', 'companyName', 'companyAddress'};
+    final aiMap = ai.toMap();
+    final mergedMap = merged.toMap();
+    final out = <String>{};
+    for (final e in aiMap.entries) {
+      if (legacy.contains(e.key)) continue;
+      final a = _nz(e.value);
+      final m = _nz(mergedMap[e.key]);
+      if (a == null || m == null) continue;
+      if (a == m) out.add(e.key);
+    }
+    return out;
+  }
 }

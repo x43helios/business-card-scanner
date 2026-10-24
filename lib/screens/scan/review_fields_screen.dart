@@ -9,6 +9,7 @@ import '../../models/ocr_result.dart';
 import '../../providers/contacts_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../services/contact_matcher.dart';
+import '../../services/ocr/ocr_coordinator.dart';
 import '../../widgets/field_editor.dart';
 import '../../widgets/merge_dialog.dart';
 import '../contact_detail_screen.dart';
@@ -31,16 +32,22 @@ class ReviewFieldsScreen extends StatefulWidget {
 
 class _ReviewFieldsScreenState extends State<ReviewFieldsScreen> {
   late BusinessCardFields _fields;
+  late OcrResult _ocrResult;
+  late Set<String> _aiContributedFields;
+  int _editorEpoch = 0;
   bool _saving = false;
+  bool _refreshingAi = false;
 
   @override
   void initState() {
     super.initState();
     _fields = widget.initialFields;
+    _ocrResult = widget.ocrResult;
+    _aiContributedFields = Set<String>.from(widget.ocrResult.aiContributedFields);
   }
 
   String get _ocrSourceLabel {
-    switch (widget.ocrResult.engine) {
+    switch (_ocrResult.engine) {
       case OcrEngine.onDevice:
         return 'on_device';
       case OcrEngine.cloud:
@@ -51,13 +58,69 @@ class _ReviewFieldsScreenState extends State<ReviewFieldsScreen> {
   }
 
   String _ocrSourceDisplay(AppLocalizations l10n) {
-    switch (widget.ocrResult.engine) {
+    switch (_ocrResult.engine) {
       case OcrEngine.onDevice:
-        return l10n.isZh ? '本機 OCR (ML Kit)' : 'On-device OCR (ML Kit)';
+        return l10n.isZh ? '本機' : 'Local';
       case OcrEngine.cloud:
         return l10n.isZh ? '雲端 OCR' : 'Cloud OCR';
       case OcrEngine.stubDemo:
         return l10n.isZh ? '示範 OCR' : 'Demo OCR';
+    }
+  }
+
+  Future<void> _refreshAi() async {
+    if (_refreshingAi || _saving) return;
+    final l10n = AppLocalizations.of(context);
+    final raw = _ocrResult.rawText.trim();
+    if (raw.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(l10n.refreshAiNoRawText)),
+      );
+      return;
+    }
+
+    setState(() => _refreshingAi = true);
+    final settings = context.read<SettingsProvider>().settings;
+    try {
+      final coordinator = OcrCoordinator();
+      // Keep current edited fields as the regex/base fill for empties after merge.
+      final base = OcrResult(
+        fields: _fields,
+        rawText: _ocrResult.rawText,
+        engine: _ocrResult.engine,
+        succeeded: _ocrResult.succeeded,
+        errorMessage: _ocrResult.errorMessage,
+        aiContributedFields: const {},
+      );
+      final enriched = await coordinator.enrichWithAi(base, settings);
+      if (!mounted) return;
+      setState(() {
+        _fields = enriched.fields;
+        _ocrResult = enriched;
+        _aiContributedFields = Set<String>.from(enriched.aiContributedFields);
+        _editorEpoch++;
+        _refreshingAi = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(l10n.refreshAiSuccess)),
+      );
+    } on AiEnrichException catch (e) {
+      if (!mounted) return;
+      setState(() => _refreshingAi = false);
+      final msg = switch (e.code) {
+        'empty_raw' => l10n.refreshAiNoRawText,
+        'no_api_key' => l10n.refreshAiNoKey,
+        'disabled' => l10n.refreshAiDisabled,
+        'empty_ai' => l10n.refreshAiEmpty,
+        _ => '${l10n.refreshAiFailed}: ${e.detail ?? e.code}',
+      };
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _refreshingAi = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${l10n.refreshAiFailed}: $e')),
+      );
     }
   }
 
@@ -112,6 +175,7 @@ class _ReviewFieldsScreenState extends State<ReviewFieldsScreen> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final hasRaw = _ocrResult.rawText.trim().isNotEmpty;
     return Scaffold(
       appBar: AppBar(
         title: Text(l10n.reviewFields),
@@ -146,12 +210,29 @@ class _ReviewFieldsScreenState extends State<ReviewFieldsScreen> {
           const SizedBox(height: 8),
           Text(
             '${l10n.ocrSource}: ${_ocrSourceDisplay(l10n)}'
-            '${widget.ocrResult.errorMessage != null ? " — ${widget.ocrResult.errorMessage}" : ""}',
+            '${_ocrResult.errorMessage != null ? " — ${_ocrResult.errorMessage}" : ""}',
             style: Theme.of(context).textTheme.bodySmall,
+          ),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: OutlinedButton.icon(
+              onPressed: (_refreshingAi || _saving || !hasRaw) ? null : _refreshAi,
+              icon: _refreshingAi
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.refresh),
+              label: Text(l10n.refreshAiFields),
+            ),
           ),
           const SizedBox(height: 16),
           FieldEditor(
+            key: ValueKey('fields-$_editorEpoch'),
             fields: _fields,
+            aiContributedFields: _aiContributedFields,
             onChanged: (f) => setState(() => _fields = f),
           ),
           const SizedBox(height: 16),

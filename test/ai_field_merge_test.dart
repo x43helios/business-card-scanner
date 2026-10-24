@@ -172,4 +172,92 @@ void main() {
     expect(m.education, contains('浸會'));
     expect(m.education, contains('碩士'));
   });
+
+  test('aiContributedKeys marks AI-matched slots only', () {
+    final regex = FieldParser.parse(gloryRaw);
+    final ai = gloryAiFields();
+    final m = FieldMerge.merge(ai: ai, regex: regex);
+    final keys = FieldMerge.aiContributedKeys(ai: ai, merged: m);
+    expect(keys, contains('chineseName'));
+    expect(keys, contains('englishName'));
+    expect(keys, contains('personalEmail'));
+    expect(keys, contains('companyWebsite'));
+    // Legacy bridge keys must never appear
+    expect(keys.contains('name'), isFalse);
+    expect(keys.contains('title'), isFalse);
+    expect(keys.contains('companyName'), isFalse);
+    expect(keys.contains('companyAddress'), isFalse);
+  });
+
+  test('aiContributedKeys empty when AI slots unused', () {
+    final regex = FieldParser.parse(gloryRaw);
+    const ai = BusinessCardFields(); // all empty
+    final m = FieldMerge.merge(ai: ai, regex: regex);
+    final keys = FieldMerge.aiContributedKeys(ai: ai, merged: m);
+    expect(keys, isEmpty);
+  });
+
+  test('scrubbed AI address does not keep address key; education only if AI edu matched', () {
+    final regex = FieldParser.parse(gloryRaw);
+    const ai = BusinessCardFields(
+      chineseName: '張敏芝',
+      education: null,
+      companyAddressChinese: '香港浸會大學中醫學碩士(內科專業)',
+    );
+    final m = FieldMerge.merge(ai: ai, regex: regex);
+    final keys = FieldMerge.aiContributedKeys(ai: ai, merged: m);
+    expect(m.companyAddressChinese, isNull);
+    expect(keys.contains('companyAddressChinese'), isFalse);
+    // education was filled by scrub from address, not from AI education slot
+    expect(keys.contains('education'), isFalse);
+    expect(keys, contains('chineseName'));
+  });
+
+  test('coordinator AI success sets aiContributedFields', () async {
+    final tmp = File('${Directory.systemTemp.path}/ai_ok_prov.jpg');
+    await tmp.writeAsBytes([0xFF, 0xD8, 0xFF, 0xD9]);
+    final regexFields = FieldParser.parse(gloryRaw);
+    final coordinator = OcrCoordinator(
+      onDevice: _FakeOcr(
+        OcrResult(
+          fields: regexFields,
+          rawText: gloryRaw,
+          engine: OcrEngine.onDevice,
+          succeeded: true,
+        ),
+      ),
+      cloud: _FakeOcr(OcrResult.failure(OcrEngine.cloud, 'no')),
+      aiExtractor: FakeAiFieldExtractor(result: gloryAiFields()),
+    );
+    final result = await coordinator.recognize(
+      imageFile: tmp,
+      settings: const AppSettings(
+        aiFieldExtractionEnabled: true,
+        aiApiKey: 'test-key',
+      ),
+      persistSettings: (s) async => s,
+      askCloudConsent: () async => false,
+    );
+    expect(result.aiContributedFields, isNotEmpty);
+    expect(result.aiContributedFields, contains('chineseName'));
+    expect(result.aiContributedFields, contains('englishName'));
+    await tmp.delete();
+  });
+
+  test('enrichWithAi throws on empty raw text', () async {
+    final coordinator = OcrCoordinator(
+      aiExtractor: FakeAiFieldExtractor(result: gloryAiFields()),
+    );
+    await expectLater(
+      coordinator.enrichWithAi(
+        const OcrResult(
+          fields: BusinessCardFields(),
+          rawText: '',
+          engine: OcrEngine.onDevice,
+        ),
+        const AppSettings(aiFieldExtractionEnabled: true, aiApiKey: 'k'),
+      ),
+      throwsA(isA<AiEnrichException>()),
+    );
+  });
 }
